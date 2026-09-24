@@ -20,6 +20,21 @@ async function getTotalExpenses(userId) {
   return Number(result.rows[0].total);
 }
 
+async function getCurrentMonthTotals(userId) {
+  const result = await db.query(
+    `SELECT
+       (SELECT COALESCE(SUM(amount), 0) FROM incomes
+        WHERE user_id = $1 AND DATE_TRUNC('month', income_date) = DATE_TRUNC('month', CURRENT_DATE)) AS income,
+       (SELECT COALESCE(SUM(amount), 0) FROM expenses
+        WHERE user_id = $1 AND DATE_TRUNC('month', expense_date) = DATE_TRUNC('month', CURRENT_DATE)) AS expenses`,
+    [userId]
+  );
+  return {
+    income: Number(result.rows[0].income),
+    expenses: Number(result.rows[0].expenses),
+  };
+}
+
 async function getTotalHoldings(userId) {
   const result = await db.query(
     'SELECT COALESCE(SUM(current_value), 0) AS total FROM financial_holdings WHERE user_id = $1',
@@ -118,6 +133,7 @@ async function getOverallBudgetUtilization(userId) {
 module.exports = {
   getTotalIncome,
   getTotalExpenses,
+  getCurrentMonthTotals,
   getTotalHoldings,
   getTotalLiabilities,
   getRecentTransactions,

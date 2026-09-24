@@ -12,26 +12,38 @@ import {
   FileText,
   Settings,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FolderKanban,
+  LogOut
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 const menuItems = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Expenses', path: '/expenses', icon: Receipt },
-  { name: 'Budget', path: '/budget', icon: PieChart },
+  { name: 'Income & Expenses', path: '/expenses', icon: Receipt },
+  { name: 'Budgets & Goals', path: '/budget', icon: PieChart },
   { name: 'Financial Health', path: '/health', icon: HeartPulse },
+  { name: 'Project Workspaces', path: '/projects', icon: FolderKanban },
   { name: 'AI Assistant', path: '/ai-assistant', icon: Bot },
-  { name: 'Calendar', path: '/calendar', icon: CalendarDays },
+  { name: 'Smart Calendar', path: '/calendar', icon: CalendarDays },
 ];
 
 const secondaryItems = [
-  { name: 'Savings & Goals', path: '#', icon: PiggyBank },
-  { name: 'Investments', path: '#', icon: TrendingUp },
-  { name: 'Reports', path: '#', icon: FileText },
-  { name: 'Settings', path: '#', icon: Settings },
+  { name: 'Savings & Goals', path: '/savings-goals', icon: PiggyBank },
+  { name: 'Investments', path: '/investments', icon: TrendingUp },
+  { name: 'Reports', path: '/reports', icon: FileText },
 ];
 
 export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <aside 
       className={`${
@@ -103,36 +115,55 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
         {/* Secondary Navigation */}
         {!isCollapsed && (
           <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 block mt-6 mb-2 transition-opacity">
-            Phase 2 Planned
+            Additional Modules
           </span>
         )}
 
-        {secondaryItems.map((item) => {
+          {secondaryItems.map((item) => {
           const Icon = item.icon;
           return (
-            <div
+            <NavLink
               key={item.name}
-              title={isCollapsed ? `${item.name} (Soon)` : undefined}
-              className={`flex items-center ${isCollapsed ? 'justify-center px-0' : 'justify-between px-3.5'} py-2 rounded-lg text-xs font-medium text-slate-500 opacity-60 cursor-not-allowed group relative`}
+              to={item.path}
+              title={isCollapsed ? item.name : undefined}
+              className={({ isActive }) => `flex items-center ${isCollapsed ? 'justify-center px-0' : 'justify-between px-3.5'} py-2 rounded-lg text-xs font-medium group relative ${isActive ? 'bg-finman-blue text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
             >
               <div className={`flex items-center ${isCollapsed ? '' : 'space-x-3'}`}>
                 <Icon className="w-4 h-4 shrink-0" />
                 {!isCollapsed && <span className="truncate">{item.name}</span>}
               </div>
-              {!isCollapsed && (
-                <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">Soon</span>
-              )}
+              {!isCollapsed && item.path === '/reports' && <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">Live</span>}
 
               {/* Tooltip when collapsed */}
               {isCollapsed && (
                 <div className="absolute left-full ml-3 px-2.5 py-1 bg-slate-800 text-slate-300 text-[11px] font-semibold rounded-md shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap border border-slate-700">
-                  {item.name} (Soon)
+                  {item.name}
                 </div>
               )}
-            </div>
+            </NavLink>
           );
         })}
       </nav>
+
+      <div className="mt-auto px-3 pb-4 pt-3 border-t border-slate-800 space-y-1.5">
+        <NavLink
+          to="/profile"
+          title={isCollapsed ? 'Profile' : undefined}
+          className={({ isActive }) => `flex items-center ${isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'} py-2.5 rounded-lg text-xs font-semibold ${isActive ? 'bg-finman-blue text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+        >
+          <Settings className="w-4 h-4 shrink-0" />
+          {!isCollapsed && <span>Profile</span>}
+        </NavLink>
+        <button
+          type="button"
+          onClick={handleLogout}
+          title={isCollapsed ? 'Logout' : undefined}
+          className={`w-full flex items-center ${isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'} py-2.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-rose-950 hover:text-rose-200`}
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          {!isCollapsed && <span>Logout</span>}
+        </button>
+      </div>
     </aside>
   );
 };

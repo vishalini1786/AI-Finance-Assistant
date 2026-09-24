@@ -7,6 +7,7 @@
 
 const budgetRepository = require('../repositories/budgetRepository');
 const categoryRepository = require('../repositories/categoryRepository');
+const notificationService = require('./notificationService');
 
 function notFoundError() {
   const err = new Error('Budget record not found');
@@ -37,26 +38,31 @@ function withCalculatedFields(budgetRow) {
 
 async function getAllBudgets(userId) {
   const budgets = await budgetRepository.findAllByUser(userId);
-  return budgets.map(withCalculatedFields);
+  const calculated = budgets.map(withCalculatedFields);
+  await Promise.all(calculated.map((budget) => notificationService.notifyBudgetStatus(userId, budget)));
+  return calculated;
 }
 
 async function getBudgetById(budgetId, userId) {
   const budget = await budgetRepository.findByIdAndUser(budgetId, userId);
   if (!budget) throw notFoundError();
-  return budget;
+  const spent = await budgetRepository.findAllByUser(userId);
+  const calculated = spent.find((item) => item.budget_id === Number(budgetId));
+  return withCalculatedFields(calculated || budget);
 }
 
 async function createBudget(userId, { categoryId, budgetAmount, month, year }) {
   const category = await categoryRepository.findById(categoryId);
   if (!category) throw badRequestError('categoryId does not match an existing category');
 
-  return budgetRepository.create({ userId, categoryId, budgetAmount, month, year });
+  const created = await budgetRepository.create({ userId, categoryId, budgetAmount, month, year });
+  return getBudgetById(created.budget_id, userId);
 }
 
 async function updateBudget(budgetId, userId, { budgetAmount, month, year }) {
   const updated = await budgetRepository.update(budgetId, userId, { budgetAmount, month, year });
   if (!updated) throw notFoundError();
-  return updated;
+  return getBudgetById(updated.budget_id, userId);
 }
 
 async function deleteBudget(budgetId, userId) {

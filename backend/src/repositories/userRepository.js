@@ -20,12 +20,12 @@ async function findById(userId) {
   return result.rows[0] || null;
 }
 
-async function createUser({ name, email, passwordHash }) {
+async function createUser({ name, email, passwordHash, phone }) {
   const result = await db.query(
-    `INSERT INTO users (name, email, password_hash)
-     VALUES ($1, $2, $3)
+    `INSERT INTO users (name, email, password_hash, phone)
+     VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [name, email, passwordHash]
+    [name, email, passwordHash, phone || null]
   );
   return result.rows[0];
 }
@@ -41,6 +41,14 @@ async function updateProfile(userId, fields) {
     'monthly_income',
     'profile_picture',
     'theme_preference',
+    'financial_interests',
+    'spending_categories',
+    'financial_goals',
+    'financial_experience',
+    'ai_preferences',
+    'savings_habit',
+    'investment_preference',
+    'is_onboarded',
   ];
 
   const setClauses = [];
@@ -50,6 +58,8 @@ async function updateProfile(userId, fields) {
   for (const key of allowedFields) {
     if (fields[key] !== undefined) {
       setClauses.push(`${key} = $${paramIndex}`);
+      // JSONB fields must be passed as JSON strings or objects.
+      // pg driver handles JS arrays as JSON automatically when the column is JSONB.
       values.push(fields[key]);
       paramIndex += 1;
     }

@@ -7,12 +7,13 @@ const { hashPassword, comparePassword } = require('../utils/password');
 const { generateToken } = require('../utils/jwt');
 
 // Strip password_hash before this ever reaches a controller/response.
+// Returns all other user fields including new onboarding columns.
 function toSafeUser(userRow) {
   const { password_hash, ...safeUser } = userRow;
   return safeUser;
 }
 
-async function register({ name, email, password }) {
+async function register({ name, email, password, phone }) {
   const existingUser = await userRepository.findByEmail(email);
   if (existingUser) {
     const err = new Error('An account with this email already exists');
@@ -22,7 +23,7 @@ async function register({ name, email, password }) {
   }
 
   const passwordHash = await hashPassword(password);
-  const newUser = await userRepository.createUser({ name, email, passwordHash });
+  const newUser = await userRepository.createUser({ name, email, passwordHash, phone });
   const token = generateToken(newUser.user_id);
 
   return { user: toSafeUser(newUser), token };

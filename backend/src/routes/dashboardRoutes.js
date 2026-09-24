@@ -12,5 +12,6 @@ router.get('/summary', dashboardController.getSummary);
 router.get('/recent-transactions', dashboardController.getRecentTransactions);
 router.get('/category-expenses', dashboardController.getCategoryExpenses);
 router.get('/monthly-trends', dashboardController.getMonthlyTrends);
+router.get('/assistant-context', dashboardController.getAssistantContext);
 
 module.exports = router;

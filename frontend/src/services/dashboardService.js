@@ -29,4 +29,9 @@ async function getMonthlyTrends() {
   return res.data.data.monthlyTrends;
 }
 
-export default { getSummary, getRecentTransactions, getCategoryExpenses, getMonthlyTrends };
+async function getAssistantContext() {
+  const res = await api.get('/dashboard/assistant-context');
+  return res.data.data.context;
+}
+
+export default { getSummary, getRecentTransactions, getCategoryExpenses, getMonthlyTrends, getAssistantContext };

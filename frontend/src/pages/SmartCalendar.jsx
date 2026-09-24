@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { 
@@ -6,60 +6,66 @@ import {
   ChevronRight, 
   Sparkles, 
   Filter, 
-  Plus, 
-  X, 
   Calendar as CalendarIcon,
   Clock,
   ArrowUpRight,
   ArrowDownRight
 } from 'lucide-react';
+import calendarService from '../services/calendarService';
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
 ];
 
-const YEARS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+const YEARS = Array.from({ length: 11 }, (_, index) => new Date().getFullYear() - 5 + index);
 
 // Key format: "YYYY-M-D" (e.g., "2026-7-15" for August 15, 2026)
-const INITIAL_SCHEDULED_EVENTS = {
-  // August 2026
-  "2026-7-15": [{ id: 1, name: "Salary Credit", amount: 65000, type: "income", color: "bg-emerald-500", text: "+₹65,000" }],
-  "2026-7-18": [{ id: 2, name: "Electricity Bill", amount: 1500, type: "bill", color: "bg-rose-500", text: "-₹1,500" }],
-  "2026-7-20": [{ id: 3, name: "SIP Investment", amount: 2000, type: "investment", color: "bg-purple-600", text: "-₹2,000" }],
-  "2026-7-24": [{ id: 4, name: "Home Loan EMI", amount: 12500, type: "emi", color: "bg-blue-600", text: "-₹12,500" }],
-  "2026-7-28": [{ id: 5, name: "Netflix Renewal", amount: 649, type: "subscription", color: "bg-amber-500", text: "-₹649" }],
-  "2026-7-30": [{ id: 6, name: "Emergency Savings Fund", amount: 10000, type: "savings", color: "bg-teal-600", text: "+₹10,000" }],
-  
-  // September 2026
-  "2026-8-1":  [{ id: 7, name: "House Rent", amount: 18000, type: "bill", color: "bg-rose-500", text: "-₹18,000" }],
-  "2026-8-15": [{ id: 8, name: "Salary Credit", amount: 65000, type: "income", color: "bg-emerald-500", text: "+₹65,000" }],
-  "2026-8-20": [{ id: 9, name: "SIP Investment", amount: 2000, type: "investment", color: "bg-purple-600", text: "-₹2,000" }],
-  "2026-8-24": [{ id: 10, name: "Home Loan EMI", amount: 12500, type: "emi", color: "bg-blue-600", text: "-₹12,500" }],
-  
-  // July 2026
-  "2026-6-15": [{ id: 11, name: "Salary Credit", amount: 65000, type: "income", color: "bg-emerald-500", text: "+₹65,000" }],
-  "2026-6-24": [{ id: 12, name: "Home Loan EMI", amount: 12500, type: "emi", color: "bg-blue-600", text: "-₹12,500" }],
+// Calendar records are not seeded in the frontend. Events added in this UI
+// are temporary until a recurring-payments/calendar API is connected.
+const EVENT_COLORS = {
+  income: 'bg-emerald-500', bill: 'bg-rose-500', emi: 'bg-blue-600',
+  investment: 'bg-purple-600', subscription: 'bg-amber-500', savings: 'bg-teal-600', tax: 'bg-orange-600',
 };
 
 export const SmartCalendar = () => {
   const today = new Date();
   
   // Navigation State (Month: 0-11, Year: 2024-2030)
-  const [currentMonth, setCurrentMonth] = useState(7); // August (0-indexed: 7)
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [selectedDay, setSelectedDay] = useState(24);
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [selectedDay, setSelectedDay] = useState(today.getDate());
   const [activeFilter, setActiveFilter] = useState('All');
-  const [allEvents, setAllEvents] = useState(INITIAL_SCHEDULED_EVENTS);
+  const [allEvents, setAllEvents] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    calendarService.getEvents()
+      .then((events) => {
+        if (!mounted) return;
+        const grouped = {};
+        events.forEach((event) => {
+          if (!event.event_date) return;
+          const date = new Date(`${event.event_date}T00:00:00`);
+          const type = event.event_type;
+          const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+          grouped[key] = [...(grouped[key] || []), {
+            id: `${event.source_type}-${event.source_id}`,
+            name: event.title,
+            amount: Number(event.amount || 0),
+            type,
+            color: EVENT_COLORS[type] || 'bg-slate-500',
+          }];
+        });
+        setAllEvents(grouped);
+      })
+      .catch(() => mounted && setError('Unable to load saved calendar events.'))
+      .finally(() => mounted && setLoading(false));
+    return () => { mounted = false; };
+  }, []);
   
-  // Add Event Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newEvent, setNewEvent] = useState({
-    name: '',
-    amount: '',
-    type: 'bill',
-    day: 15
-  });
 
   // Calendar Date Math
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -103,7 +109,8 @@ export const SmartCalendar = () => {
       'EMI': 'emi',
       'Investments': 'investment',
       'Subscriptions': 'subscription',
-      'Savings': 'savings'
+      'Savings': 'savings',
+      'Taxes': 'tax'
     };
     return map[activeFilter] ? type === map[activeFilter] : true;
   };
@@ -132,39 +139,6 @@ export const SmartCalendar = () => {
   const totalOutflow = currentMonthEventsList
     .filter(e => e.type !== 'income')
     .reduce((acc, curr) => acc + curr.amount, 0);
-
-  // Handle Adding New Commitment
-  const handleAddCommitment = (e) => {
-    e.preventDefault();
-    if (!newEvent.name || !newEvent.amount) return;
-
-    const colorMap = {
-      income: 'bg-emerald-500',
-      bill: 'bg-rose-500',
-      emi: 'bg-blue-600',
-      investment: 'bg-purple-600',
-      subscription: 'bg-amber-500',
-      savings: 'bg-teal-600'
-    };
-
-    const key = `${currentYear}-${currentMonth}-${newEvent.day}`;
-    const newEntry = {
-      id: Date.now(),
-      name: newEvent.name,
-      amount: Number(newEvent.amount),
-      type: newEvent.type,
-      color: colorMap[newEvent.type] || 'bg-slate-500',
-      text: `${newEvent.type === 'income' ? '+' : '-'}₹${Number(newEvent.amount).toLocaleString('en-IN')}`
-    };
-
-    setAllEvents(prev => ({
-      ...prev,
-      [key]: [...(prev[key] || []), newEntry]
-    }));
-
-    setIsModalOpen(false);
-    setNewEvent({ name: '', amount: '', type: 'bill', day: selectedDay });
-  };
 
   return (
     <MainLayout>
@@ -226,18 +200,12 @@ export const SmartCalendar = () => {
               </button>
             </div>
 
-            <button
-              onClick={() => {
-                setNewEvent({ ...newEvent, day: selectedDay });
-                setIsModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-finman-blue hover:bg-finman-blueDark text-white rounded-lg text-xs font-bold shadow-sm transition-colors"
-            >
-              <Plus className="w-4 h-4" /> Add Event
-            </button>
           </div>
         }
       />
+
+      {error && <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}
+      {loading && <div className="mb-6 text-center text-xs font-semibold text-slate-400">Loading saved financial events...</div>}
 
       {/* Filter Tabs & Monthly Flow Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -245,7 +213,7 @@ export const SmartCalendar = () => {
           <span className="text-slate-400 font-bold flex items-center gap-1 mr-1">
             <Filter className="w-3.5 h-3.5" /> Filter:
           </span>
-          {['All', 'Income', 'Bills', 'EMI', 'Investments', 'Subscriptions', 'Savings'].map((tab) => (
+          {['All', 'Income', 'Bills', 'EMI', 'Investments', 'Subscriptions', 'Savings', 'Taxes'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveFilter(tab)}
@@ -302,6 +270,9 @@ export const SmartCalendar = () => {
             {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
               const events = getEventsForDay(day);
               const isSelected = selectedDay === day;
+              const isToday = currentYear === today.getFullYear()
+                && currentMonth === today.getMonth()
+                && day === today.getDate();
               const hasEvents = events.length > 0;
 
               return (
@@ -311,15 +282,18 @@ export const SmartCalendar = () => {
                   className={`min-h-[82px] p-1.5 rounded-lg border text-left flex flex-col justify-between transition-all group ${
                     isSelected
                       ? 'border-finman-blue bg-blue-50/50 shadow-xs ring-2 ring-finman-blue/20'
+                      : isToday
+                      ? 'border-emerald-500 bg-emerald-50/60 shadow-xs'
                       : hasEvents
                       ? 'border-slate-200 bg-white hover:border-slate-300'
                       : 'border-slate-100 bg-slate-50/50 text-slate-400 hover:bg-white'
                   }`}
                 >
                   <div className="flex justify-between items-center w-full">
-                    <span className={`text-xs font-bold ${isSelected ? 'text-finman-blue' : 'text-slate-700'}`}>
+                    <span className={`text-xs font-bold ${isSelected ? 'text-finman-blue' : isToday ? 'text-emerald-700' : 'text-slate-700'}`}>
                       {day}
                     </span>
+                    {isToday && <span className="text-[9px] font-black uppercase tracking-wide text-emerald-600">Today</span>}
                     {hasEvents && (
                       <span className="w-1.5 h-1.5 rounded-full bg-finman-blue"></span>
                     )}
@@ -390,15 +364,6 @@ export const SmartCalendar = () => {
               <div className="text-center py-6">
                 <Clock className="w-6 h-6 text-slate-300 mx-auto mb-2" />
                 <p className="text-xs text-slate-400 italic">No commitments scheduled on this date.</p>
-                <button
-                  onClick={() => {
-                    setNewEvent({ ...newEvent, day: selectedDay });
-                    setIsModalOpen(true);
-                  }}
-                  className="mt-3 text-xs font-bold text-finman-blue hover:underline"
-                >
-                  + Add commitment for {MONTH_NAMES[currentMonth]} {selectedDay}
-                </button>
               </div>
             )}
           </div>
@@ -440,101 +405,6 @@ export const SmartCalendar = () => {
         </div>
       </div>
 
-      {/* Add Event Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-bold text-slate-900">
-                Schedule Financial Event
-              </h3>
-              <button onClick={() => setIsModalOpen(false)}>
-                <X className="w-4 h-4 text-slate-400 hover:text-slate-600" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddCommitment} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Event Name / Merchant</label>
-                <input
-                  type="text"
-                  required
-                  value={newEvent.name}
-                  onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
-                  placeholder="e.g. WiFi Bill, Car Loan EMI, Quarterly SIP"
-                  className="w-full border border-slate-200 rounded-lg p-2.5 outline-none focus:border-finman-blue font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Amount (₹)</label>
-                  <input
-                    type="number"
-                    required
-                    value={newEvent.amount}
-                    onChange={(e) => setNewEvent({ ...newEvent, amount: e.target.value })}
-                    placeholder="2500"
-                    className="w-full border border-slate-200 rounded-lg p-2.5 outline-none focus:border-finman-blue font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Type</label>
-                  <select
-                    value={newEvent.type}
-                    onChange={(e) => setNewEvent({ ...newEvent, type: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg p-2.5 outline-none focus:border-finman-blue font-medium"
-                  >
-                    <option value="bill">Bill</option>
-                    <option value="emi">EMI</option>
-                    <option value="investment">Investment</option>
-                    <option value="subscription">Subscription</option>
-                    <option value="income">Income</option>
-                    <option value="savings">Savings</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Day of Month</label>
-                  <select
-                    value={newEvent.day}
-                    onChange={(e) => setNewEvent({ ...newEvent, day: Number(e.target.value) })}
-                    className="w-full border border-slate-200 rounded-lg p-2.5 outline-none focus:border-finman-blue font-medium"
-                  >
-                    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => (
-                      <option key={d} value={d}>Day {d}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Target Month/Year</label>
-                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 truncate">
-                    {MONTH_NAMES[currentMonth]} {currentYear}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-lg text-slate-500 font-bold hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-finman-blue text-white font-bold rounded-lg hover:bg-finman-blueDark"
-                >
-                  Save Commitment
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </MainLayout>
   );
 };

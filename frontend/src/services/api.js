@@ -33,7 +33,6 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('finman_token');
-      localStorage.removeItem('finman_user');
       // window.location.href = '/login';
     }
     return Promise.reject(error);

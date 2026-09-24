@@ -14,4 +14,17 @@ const updateProfile = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Profile updated successfully', data: { user } });
 });
 
-module.exports = { getProfile, updateProfile };
+/**
+ * POST /api/users/onboarding
+ * Persists all onboarding selections to PostgreSQL and sets is_onboarded = true.
+ * This is the single endpoint responsible for completing the onboarding flow.
+ */
+const completeOnboarding = asyncHandler(async (req, res) => {
+  const user = await userService.completeOnboarding(req.userId, req.body);
+  return sendSuccess(res, {
+    message: 'Onboarding completed successfully',
+    data: { user },
+  });
+});
+
+module.exports = { getProfile, updateProfile, completeOnboarding };

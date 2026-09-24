@@ -13,6 +13,13 @@ const incomeRoutes = require('./routes/incomeRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const budgetRoutes = require('./routes/budgetRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const projectRoutes = require('./routes/projectRoutes');
+const goalRoutes = require('./routes/goalRoutes');
+const holdingRoutes = require('./routes/holdingRoutes');
+const calendarRoutes = require('./routes/calendarRoutes');
+const documentRoutes = require('./routes/documentRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 const { notFoundHandler, errorHandler } = require('./middleware/errorMiddleware');
 
@@ -43,6 +50,13 @@ app.use('/api/income', incomeRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/goals', goalRoutes);
+app.use('/api/holdings', holdingRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/documents', documentRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/reports', reportRoutes);
 
 // ---- 404 + centralized error handling (must be last) ----
 app.use(notFoundHandler);

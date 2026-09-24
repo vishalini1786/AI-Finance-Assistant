@@ -7,8 +7,8 @@ const { asyncHandler } = require('../middleware/errorMiddleware');
 const { sendSuccess } = require('../utils/response');
 
 const register = asyncHandler(async (req, res) => {
-  const { name, email, password } = req.body;
-  const { user, token } = await authService.register({ name, email, password });
+  const { name, email, password, phone } = req.body;
+  const { user, token } = await authService.register({ name, email, password, phone });
 
   return sendSuccess(res, {
     statusCode: 201,

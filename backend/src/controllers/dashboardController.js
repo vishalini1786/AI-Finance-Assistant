@@ -24,4 +24,18 @@ const getMonthlyTrends = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Monthly trends fetched successfully', data: { monthlyTrends } });
 });
 
-module.exports = { getSummary, getRecentTransactions, getCategoryExpenses, getMonthlyTrends };
+const getAssistantContext = asyncHandler(async (req, res) => {
+  const context = await dashboardService.getAssistantContext(req.userId);
+  return sendSuccess(res, {
+    message: 'Authenticated financial context fetched successfully',
+    data: { context },
+  });
+});
+
+module.exports = {
+  getSummary,
+  getRecentTransactions,
+  getCategoryExpenses,
+  getMonthlyTrends,
+  getAssistantContext,
+};

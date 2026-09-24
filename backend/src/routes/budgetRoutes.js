@@ -13,7 +13,7 @@ router.use(authMiddleware);
 router.post('/', validate(validateBudget), budgetController.createBudget);
 router.get('/', budgetController.getAllBudgets);
 router.get('/:id', budgetController.getBudgetById);
-router.put('/:id', budgetController.updateBudget);
+router.put('/:id', validate(validateBudget), budgetController.updateBudget);
 router.delete('/:id', budgetController.deleteBudget);
 
 module.exports = router;
