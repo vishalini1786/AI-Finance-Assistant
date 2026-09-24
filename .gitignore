@@ -25,3 +25,11 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+
+# Runtime uploads; keep the directory placeholder tracked
+backend/uploads/*
+!backend/uploads/.gitkeep
