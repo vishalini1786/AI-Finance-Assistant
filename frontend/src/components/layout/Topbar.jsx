@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, LogOut, UserCircle } from 'lucide-react';
+import { Bell, LogOut, UserCircle, Zap } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import notificationService from '../../services/notificationService';
+import { QuickExpenseModal } from '../common/QuickExpenseModal';
 
 export const Topbar = () => {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ export const Topbar = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
+  const [quickExpenseOpen, setQuickExpenseOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -28,9 +30,19 @@ export const Topbar = () => {
   };
 
   return (
+    <>
     <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0">
       <div className="text-xs font-semibold text-slate-400">Personal financial workspace</div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* Quick Expense button */}
+        <button
+          type="button"
+          onClick={() => setQuickExpenseOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-finman-blue to-indigo-500 text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity shadow-sm"
+          title="Quick Expense (1-2 min)"
+        >
+          <Zap className="w-3.5 h-3.5 text-yellow-300" /> Quick Expense
+        </button>
         <div className="relative">
           <button type="button" onClick={() => setOpen((value) => !value)} className="relative p-2 text-slate-400 hover:text-finman-blue" aria-label="Notifications">
             <Bell className="w-4 h-4" />
@@ -48,5 +60,11 @@ export const Topbar = () => {
         <button type="button" onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-600" aria-label="Log out"><LogOut className="w-4 h-4" /></button>
       </div>
     </header>
+    <QuickExpenseModal
+      isOpen={quickExpenseOpen}
+      onClose={() => setQuickExpenseOpen(false)}
+      onSaved={() => {}}
+    />
+    </>
   );
 };

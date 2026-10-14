@@ -6,7 +6,8 @@ const db = require('../config/database');
 
 async function findAllByUser(userId) {
   const result = await db.query(
-    `SELECT * FROM incomes
+    `SELECT income_id, user_id, source, amount, TO_CHAR(income_date, 'YYYY-MM-DD') AS income_date, description, created_at, updated_at 
+     FROM incomes
      WHERE user_id = $1
      ORDER BY income_date DESC, income_id DESC`,
     [userId]
@@ -16,7 +17,7 @@ async function findAllByUser(userId) {
 
 async function findByIdAndUser(incomeId, userId) {
   const result = await db.query(
-    'SELECT * FROM incomes WHERE income_id = $1 AND user_id = $2',
+    `SELECT income_id, user_id, source, amount, TO_CHAR(income_date, 'YYYY-MM-DD') AS income_date, description, created_at, updated_at FROM incomes WHERE income_id = $1 AND user_id = $2`,
     [incomeId, userId]
   );
   return result.rows[0] || null;

@@ -9,9 +9,11 @@ import {
   Calendar as CalendarIcon,
   Clock,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Plus
 } from 'lucide-react';
 import calendarService from '../services/calendarService';
+import { AddCalendarEventModal } from '../components/calendar/AddCalendarEventModal';
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -39,8 +41,10 @@ export const SmartCalendar = () => {
   const [allEvents, setAllEvents] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  useEffect(() => {
+  const fetchEvents = () => {
     let mounted = true;
     calendarService.getEvents()
       .then((events) => {
@@ -64,6 +68,10 @@ export const SmartCalendar = () => {
       .catch(() => mounted && setError('Unable to load saved calendar events.'))
       .finally(() => mounted && setLoading(false));
     return () => { mounted = false; };
+  };
+
+  useEffect(() => {
+    return fetchEvents();
   }, []);
   
 
@@ -140,6 +148,9 @@ export const SmartCalendar = () => {
     .filter(e => e.type !== 'income')
     .reduce((acc, curr) => acc + curr.amount, 0);
 
+  // Calculate preselected date string (YYYY-MM-DD)
+  const preselectedDateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+
   return (
     <MainLayout>
       <PageHeader
@@ -147,6 +158,14 @@ export const SmartCalendar = () => {
         subtitle="Track income, expenses, bills, EMIs and scheduled financial events"
         rightElement={
           <div className="flex flex-wrap items-center gap-3">
+            {/* Add Event Button */}
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-finman-blue text-white rounded-lg text-xs font-bold hover:bg-finman-blueDark transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Add Event
+            </button>
+
             {/* Interactive Month & Year Selectors */}
             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg p-1 shadow-xs text-xs font-bold text-slate-700">
               <button 
@@ -202,6 +221,13 @@ export const SmartCalendar = () => {
 
           </div>
         }
+      />
+
+      <AddCalendarEventModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={() => fetchEvents()}
+        preselectedDate={preselectedDateStr}
       />
 
       {error && <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}

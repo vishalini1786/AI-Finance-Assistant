@@ -4,6 +4,7 @@ import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { CreateProjectModal } from '../components/projects/CreateProjectModal';
 import projectService from '../services/projectService';
+import { formatDate } from '../utils/formatDate';
 import { FolderKanban, Plus, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 
 export const ProjectList = () => {
@@ -98,7 +99,7 @@ export const ProjectList = () => {
                       </h3>
                       <p className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-full ${project.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-                        {project.status} • {new Date(project.start_date).toLocaleDateString()}
+                        {project.status} • {formatDate(project.start_date)}
                       </p>
                     </div>
                   </div>
@@ -153,3 +154,4 @@ export const ProjectList = () => {
     </MainLayout>
   );
 };
+

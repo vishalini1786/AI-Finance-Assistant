@@ -11,6 +11,9 @@ const validateExpense = require('../validators/expenseValidator');
 router.use(authMiddleware);
 
 router.post('/', validate(validateExpense), expenseController.createExpense);
+router.get('/daily', expenseController.getDailyReport);
+router.get('/frequent', expenseController.getFrequentExpenses);
+router.get('/yesterday', expenseController.getYesterdaysExpenses);
 router.get('/', expenseController.getAllExpenses);
 router.get('/:id', expenseController.getExpenseById);
 router.put('/:id', validate(validateExpense), expenseController.updateExpense);

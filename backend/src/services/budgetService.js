@@ -51,16 +51,16 @@ async function getBudgetById(budgetId, userId) {
   return withCalculatedFields(calculated || budget);
 }
 
-async function createBudget(userId, { categoryId, budgetAmount, month, year }) {
+async function createBudget(userId, { categoryId, budgetAmount, month, year, priority }) {
   const category = await categoryRepository.findById(categoryId);
   if (!category) throw badRequestError('categoryId does not match an existing category');
 
-  const created = await budgetRepository.create({ userId, categoryId, budgetAmount, month, year });
+  const created = await budgetRepository.create({ userId, categoryId, budgetAmount, month, year, priority });
   return getBudgetById(created.budget_id, userId);
 }
 
-async function updateBudget(budgetId, userId, { budgetAmount, month, year }) {
-  const updated = await budgetRepository.update(budgetId, userId, { budgetAmount, month, year });
+async function updateBudget(budgetId, userId, { budgetAmount, month, year, priority }) {
+  const updated = await budgetRepository.update(budgetId, userId, { budgetAmount, month, year, priority });
   if (!updated) throw notFoundError();
   return getBudgetById(updated.budget_id, userId);
 }

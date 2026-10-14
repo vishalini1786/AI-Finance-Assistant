@@ -79,12 +79,14 @@ export const SummaryCard = ({
           </span>
           <div className="mt-2 flex items-baseline">
             {!isCount && typeof amount === 'number' && (
-              <span className="text-xl font-bold text-slate-500 mr-1 font-sans opacity-80">₹</span>
+              <span className="text-xl font-bold text-slate-500 mr-1 font-sans opacity-80">
+                {amount < 0 ? '-₹' : '₹'}
+              </span>
             )}
             <span className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 font-sans">
               {isCount 
                 ? amount 
-                : (typeof amount === 'number' ? amount.toLocaleString('en-IN') : amount)
+                : (typeof amount === 'number' ? Math.abs(amount).toLocaleString('en-IN') : amount)
               }
             </span>
           </div>

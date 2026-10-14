@@ -30,4 +30,22 @@ async function deleteBudget(id) {
   await api.delete(`/budgets/${id}`);
 }
 
-export default { getBudgets, getBudgetById, createBudget, updateBudget, deleteBudget };
+async function getMonthlyPlan(year, month) {
+  const res = await api.get(`/monthly-plans/${year}/${month}`);
+  return res.data.data.plan;
+}
+
+async function saveMonthlyPlan(year, month, payload) {
+  const res = await api.post(`/monthly-plans/${year}/${month}`, payload);
+  return res.data.data.plan;
+}
+
+export default { 
+  getBudgets, 
+  getBudgetById, 
+  createBudget, 
+  updateBudget, 
+  deleteBudget,
+  getMonthlyPlan,
+  saveMonthlyPlan
+};

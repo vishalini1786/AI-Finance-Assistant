@@ -27,4 +27,9 @@ const completeOnboarding = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { getProfile, updateProfile, completeOnboarding };
+const updateExpensePreferences = asyncHandler(async (req, res) => {
+  const user = await userService.updateExpensePreferences(req.userId, req.body);
+  return sendSuccess(res, { message: 'Expense preferences updated', data: { user } });
+});
+
+module.exports = { getProfile, updateProfile, completeOnboarding, updateExpensePreferences };

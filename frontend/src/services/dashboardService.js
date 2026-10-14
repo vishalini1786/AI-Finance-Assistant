@@ -6,26 +6,23 @@
 
 import api from './api';
 
-async function getSummary() {
-  const res = await api.get('/dashboard/summary');
+async function getSummary(params = {}) {
+  const res = await api.get('/dashboard/summary', { params });
   return res.data.data;
-  // Shape: { totalIncome, totalExpenses, totalSavings, totalInvestments,
-  //          totalAssets, totalLiabilities, netWorth,
-  //          budgetUtilizationPercent, financialHealthScore }
 }
 
-async function getRecentTransactions() {
-  const res = await api.get('/dashboard/recent-transactions');
+async function getRecentTransactions(params = {}) {
+  const res = await api.get('/dashboard/recent-transactions', { params });
   return res.data.data.transactions;
 }
 
-async function getCategoryExpenses() {
-  const res = await api.get('/dashboard/category-expenses');
+async function getCategoryExpenses(params = {}) {
+  const res = await api.get('/dashboard/category-expenses', { params });
   return res.data.data.categoryExpenses;
 }
 
-async function getMonthlyTrends() {
-  const res = await api.get('/dashboard/monthly-trends');
+async function getMonthlyTrends(params = {}) {
+  const res = await api.get('/dashboard/monthly-trends', { params });
   return res.data.data.monthlyTrends;
 }
 

@@ -18,5 +18,6 @@ router.put('/profile', userController.updateProfile);
 // Onboarding completion — saves all onboarding data to PostgreSQL
 // and sets is_onboarded = true
 router.post('/onboarding', validate(validateOnboarding), userController.completeOnboarding);
+router.put('/expense-preferences', userController.updateExpensePreferences);
 
 module.exports = router;

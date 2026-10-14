@@ -4,6 +4,7 @@ import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { AddProjectExpenseModal } from '../components/projects/AddProjectExpenseModal';
 import projectService from '../services/projectService';
+import { formatDate } from '../utils/formatDate';
 import { ArrowLeft, Plus, Loader2, AlertCircle, Trash2, Calendar, Target, CheckCircle2 } from 'lucide-react';
 
 export const ProjectDetail = () => {
@@ -128,14 +129,14 @@ export const ProjectDetail = () => {
                 <p className="text-xs font-bold text-slate-400 mb-1 flex items-center gap-1.5 justify-end">
                   <Calendar className="w-3.5 h-3.5" /> Start Date
                 </p>
-                <p className="text-sm font-bold text-slate-800">{new Date(project.start_date).toLocaleDateString()}</p>
+                <p className="text-sm font-bold text-slate-800">{formatDate(project.start_date)}</p>
               </div>
               {project.target_date && (
                 <div>
                   <p className="text-xs font-bold text-slate-400 mb-1 flex items-center gap-1.5 justify-end">
                     <Target className="w-3.5 h-3.5" /> Target Date
                   </p>
-                  <p className="text-sm font-bold text-slate-800">{new Date(project.target_date).toLocaleDateString()}</p>
+                  <p className="text-sm font-bold text-slate-800">{formatDate(project.target_date)}</p>
                 </div>
               )}
             </div>
@@ -222,7 +223,7 @@ export const ProjectDetail = () => {
                 {project.expenses.map((exp) => (
                   <tr key={exp.project_expense_id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="p-4 pl-6 text-slate-500 font-medium whitespace-nowrap">
-                      {new Date(exp.expense_date).toLocaleDateString()}
+                      {formatDate(exp.expense_date)}
                     </td>
                     <td className="p-4">
                       <p className="font-bold text-slate-900">{exp.expense_name}</p>
@@ -265,3 +266,4 @@ export const ProjectDetail = () => {
     </MainLayout>
   );
 };
+

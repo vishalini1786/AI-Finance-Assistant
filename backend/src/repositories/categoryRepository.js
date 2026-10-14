@@ -4,11 +4,22 @@
 
 const db = require('../config/database');
 
-async function findAll() {
+async function findAllByUser(userId) {
   const result = await db.query(
-    'SELECT * FROM categories ORDER BY name ASC'
+    'SELECT * FROM categories WHERE user_id IS NULL OR user_id = $1 ORDER BY name ASC',
+    [userId]
   );
   return result.rows;
+}
+
+async function create({ name, description, priority, userId }) {
+  const result = await db.query(
+    `INSERT INTO categories (name, description, priority, user_id)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [name, description, priority || 'FLEXIBLE', userId]
+  );
+  return result.rows[0];
 }
 
 async function findById(categoryId) {
@@ -19,4 +30,4 @@ async function findById(categoryId) {
   return result.rows[0] || null;
 }
 
-module.exports = { findAll, findById };
+module.exports = { findAllByUser, findById, create };

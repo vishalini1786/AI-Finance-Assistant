@@ -29,4 +29,20 @@ async function deleteExpense(id) {
   await api.delete(`/expenses/${id}`);
 }
 
-export default { getExpenses, getExpenseById, createExpense, updateExpense, deleteExpense };
+async function getDailyReport(date) {
+  // date: YYYY-MM-DD string
+  const res = await api.get('/expenses/daily', { params: { date } });
+  return res.data.data;
+}
+
+async function getFrequentExpenses() {
+  const res = await api.get('/expenses/frequent');
+  return res.data.data.frequent;
+}
+
+async function getYesterdaysExpenses() {
+  const res = await api.get('/expenses/yesterday');
+  return res.data.data.expenses;
+}
+
+export default { getExpenses, getExpenseById, createExpense, updateExpense, deleteExpense, getDailyReport, getFrequentExpenses, getYesterdaysExpenses };

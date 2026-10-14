@@ -1,0 +1,1 @@
+require('dotenv').config({path: './backend/.env'}); const db = require('./backend/src/config/database'); async function test() { const result = await db.query('SELECT * FROM budgets limit 5'); console.log('Budgets:', result.rows); const exps = await db.query('SELECT * FROM expenses limit 5'); console.log('Expenses:', exps.rows); process.exit(0); } test().catch(console.error);

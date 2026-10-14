@@ -13,7 +13,7 @@ async function createProjectExpense({ projectId, userId, expenseName, category, 
 
 async function getProjectExpenses(projectId, userId) {
   const result = await db.query(
-    `SELECT * FROM project_expenses 
+    `SELECT project_expense_id, project_id, user_id, expense_name, category, amount, TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date, payment_mode, description, created_at, updated_at FROM project_expenses 
      WHERE project_id = $1 AND user_id = $2
      ORDER BY expense_date DESC, created_at DESC`,
     [projectId, userId]
@@ -23,7 +23,7 @@ async function getProjectExpenses(projectId, userId) {
 
 async function getProjectExpenseById(expenseId, projectId, userId) {
   const result = await db.query(
-    `SELECT * FROM project_expenses WHERE project_expense_id = $1 AND project_id = $2 AND user_id = $3`,
+    `SELECT project_expense_id, project_id, user_id, expense_name, category, amount, TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date, payment_mode, description, created_at, updated_at FROM project_expenses WHERE project_expense_id = $1 AND project_id = $2 AND user_id = $3`,
     [expenseId, projectId, userId]
   );
   return result.rows[0] || null;

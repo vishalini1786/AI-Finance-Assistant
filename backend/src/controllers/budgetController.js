@@ -15,14 +15,14 @@ const getBudgetById = asyncHandler(async (req, res) => {
 });
 
 const createBudget = asyncHandler(async (req, res) => {
-  const { categoryId, budgetAmount, month, year } = req.body;
-  const budget = await budgetService.createBudget(req.userId, { categoryId, budgetAmount, month, year });
+  const { categoryId, budgetAmount, month, year, priority } = req.body;
+  const budget = await budgetService.createBudget(req.userId, { categoryId, budgetAmount, month, year, priority });
   return sendSuccess(res, { statusCode: 201, message: 'Budget created successfully', data: { budget } });
 });
 
 const updateBudget = asyncHandler(async (req, res) => {
-  const { budgetAmount, month, year } = req.body;
-  const budget = await budgetService.updateBudget(req.params.id, req.userId, { budgetAmount, month, year });
+  const { budgetAmount, month, year, priority } = req.body;
+  const budget = await budgetService.updateBudget(req.params.id, req.userId, { budgetAmount, month, year, priority });
   return sendSuccess(res, { message: 'Budget updated successfully', data: { budget } });
 });
 

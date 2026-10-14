@@ -82,4 +82,19 @@ async function completeOnboarding(userId, onboardingData) {
   return toSafeUser(updatedUser);
 }
 
-module.exports = { getProfile, updateProfile, completeOnboarding };
+async function updateExpensePreferences(userId, { expenseReminderEnabled, expenseReminderTime, microExpensePromptsEnabled }) {
+  const fields = {};
+  if (expenseReminderEnabled !== undefined) fields.expense_reminder_enabled = expenseReminderEnabled;
+  if (expenseReminderTime !== undefined) fields.expense_reminder_time = expenseReminderTime || null;
+  if (microExpensePromptsEnabled !== undefined) fields.micro_expense_prompts_enabled = microExpensePromptsEnabled;
+  const updatedUser = await userRepository.updateProfile(userId, fields);
+  if (!updatedUser) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    err.expose = true;
+    throw err;
+  }
+  return toSafeUser(updatedUser);
+}
+
+module.exports = { getProfile, updateProfile, completeOnboarding, updateExpensePreferences };

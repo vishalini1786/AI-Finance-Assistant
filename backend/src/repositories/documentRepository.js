@@ -3,7 +3,7 @@ const db = require('../config/database');
 async function createDocument({ userId, fileName, filePath, documentType }) {
   const result = await db.query(
     `INSERT INTO financial_documents (user_id, file_name, file_path, document_type, processing_status)
-     VALUES ($1, $2, $3, $4, 'PROCESSING') RETURNING *`,
+     VALUES ($1, $2, $3, $4, 'PENDING') RETURNING *`,
     [userId, fileName, filePath, documentType || 'RECEIPT']
   );
   return result.rows[0];

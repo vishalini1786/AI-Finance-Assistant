@@ -5,4 +5,9 @@ async function getCategories() {
   return res.data.data.categories;
 }
 
-export default { getCategories };
+async function createCategory(payload) {
+  const res = await api.post('/categories', payload);
+  return res.data.data.category;
+}
+
+export default { getCategories, createCategory };

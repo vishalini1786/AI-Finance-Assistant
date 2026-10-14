@@ -27,9 +27,6 @@ const menuItems = [
   { name: 'Project Workspaces', path: '/projects', icon: FolderKanban },
   { name: 'AI Assistant', path: '/ai-assistant', icon: Bot },
   { name: 'Smart Calendar', path: '/calendar', icon: CalendarDays },
-];
-
-const secondaryItems = [
   { name: 'Savings & Goals', path: '/savings-goals', icon: PiggyBank },
   { name: 'Investments', path: '/investments', icon: TrendingUp },
   { name: 'Reports', path: '/reports', icon: FileText },
@@ -92,41 +89,12 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
               to={item.path}
               title={isCollapsed ? item.name : undefined}
               className={({ isActive }) =>
-                `flex items-center ${isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'} py-2.5 rounded-lg text-xs font-semibold transition-all group relative ${
+                `flex items-center ${isCollapsed ? 'justify-center px-0' : 'justify-between px-3.5'} py-2.5 rounded-lg text-xs font-semibold transition-all group relative ${
                   isActive
                     ? 'bg-finman-blue text-white shadow-sm'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`
               }
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {!isCollapsed && <span className="truncate">{item.name}</span>}
-
-              {/* Tooltip on Hover when Collapsed */}
-              {isCollapsed && (
-                <div className="absolute left-full ml-3 px-2.5 py-1 bg-slate-800 text-white text-[11px] font-semibold rounded-md shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap border border-slate-700">
-                  {item.name}
-                </div>
-              )}
-            </NavLink>
-          );
-        })}
-
-        {/* Secondary Navigation */}
-        {!isCollapsed && (
-          <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 block mt-6 mb-2 transition-opacity">
-            Additional Modules
-          </span>
-        )}
-
-          {secondaryItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink
-              key={item.name}
-              to={item.path}
-              title={isCollapsed ? item.name : undefined}
-              className={({ isActive }) => `flex items-center ${isCollapsed ? 'justify-center px-0' : 'justify-between px-3.5'} py-2 rounded-lg text-xs font-medium group relative ${isActive ? 'bg-finman-blue text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
             >
               <div className={`flex items-center ${isCollapsed ? '' : 'space-x-3'}`}>
                 <Icon className="w-4 h-4 shrink-0" />
@@ -134,9 +102,9 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
               </div>
               {!isCollapsed && item.path === '/reports' && <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">Live</span>}
 
-              {/* Tooltip when collapsed */}
+              {/* Tooltip on Hover when Collapsed */}
               {isCollapsed && (
-                <div className="absolute left-full ml-3 px-2.5 py-1 bg-slate-800 text-slate-300 text-[11px] font-semibold rounded-md shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap border border-slate-700">
+                <div className="absolute left-full ml-3 px-2.5 py-1 bg-slate-800 text-white text-[11px] font-semibold rounded-md shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap border border-slate-700">
                   {item.name}
                 </div>
               )}

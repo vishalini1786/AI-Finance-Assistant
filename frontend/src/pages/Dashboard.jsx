@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formatDate } from '../utils/formatDate';
 import {
   ResponsiveContainer,
   LineChart,
@@ -177,11 +178,22 @@ export const Dashboard = () => {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 animate-in fade-in duration-500">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8 animate-in fade-in duration-500">
             <SummaryCard title="Net Cash Flow" amount={summary.netCashFlow || 0} indicator="Income minus expenses" icon={Wallet} type={summary.netCashFlow < 0 ? 'expense' : 'blue'} />
             <SummaryCard title="Total Income" amount={summary.totalIncome || 0} indicator="All recorded income" icon={ArrowUpRight} type="income" />
             <SummaryCard title="Total Expenses" amount={summary.totalExpenses || 0} indicator="All recorded expenses" icon={ArrowDownRight} type="expense" />
-            <SummaryCard title="Period Savings" amount={summary.periodSavings || 0} indicator={summary.deficit > 0 ? `Deficit: ${formatCurrency(summary.deficit)}` : 'Positive net cash flow'} icon={PiggyBank} type="teal" />
+            <SummaryCard title={summary.deficit > 0 ? "Deficit" : "Period Savings"} amount={summary.deficit > 0 ? summary.deficit : summary.periodSavings || 0} indicator={summary.deficit > 0 ? 'Negative net cash flow' : 'Positive net cash flow'} icon={PiggyBank} type={summary.deficit > 0 ? 'expense' : 'teal'} />
+              {summary.predictionMessage ? (
+                <div className="bg-orange-50 border border-orange-200/90 rounded-2xl p-4 flex flex-col justify-center text-orange-800 shadow-sm col-span-1 min-h-[90px]">
+                  <div className="flex items-center gap-1.5 font-bold mb-1">
+                    <Sparkles className="w-4 h-4 text-orange-500" />
+                    <span className="text-sm">AI Prediction</span>
+                  </div>
+                  <p className="text-[11px] font-medium leading-tight">{summary.predictionMessage}</p>
+                </div>
+              ) : (
+                <SummaryCard title="Predicted Expense" amount={summary.predictedExpense || 0} indicator="ML Random Forest" icon={Sparkles} type="orange" />
+              )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
@@ -468,7 +480,7 @@ export const Dashboard = () => {
                 ) : (
                   transactions.map((tx) => {
                     const title = tx.merchant_name || tx.description || tx.category_name || 'Expense';
-                    const date = tx.expense_date ? new Date(tx.expense_date).toLocaleDateString('en-IN') : '-';
+                    const date = tx.expense_date ? formatDate(tx.expense_date) : '-';
 
                     return (
                       <div
@@ -542,3 +554,4 @@ export const Dashboard = () => {
     </MainLayout>
   );
 };
+

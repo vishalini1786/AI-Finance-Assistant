@@ -13,7 +13,7 @@ async function createProject({ userId, projectName, description, targetBudget, s
 
 async function getProjectsByUser(userId) {
   const result = await db.query(
-    `SELECT pw.*, 
+    `SELECT pw.project_id, pw.user_id, pw.project_name, pw.description, pw.target_budget, TO_CHAR(pw.start_date, 'YYYY-MM-DD') AS start_date, TO_CHAR(pw.target_date, 'YYYY-MM-DD') AS target_date, pw.status, pw.created_at, pw.updated_at,
             COALESCE(SUM(pe.amount), 0) AS total_spent
      FROM project_workspaces pw
      LEFT JOIN project_expenses pe
@@ -29,7 +29,7 @@ async function getProjectsByUser(userId) {
 
 async function getProjectById(projectId, userId) {
   const result = await db.query(
-    `SELECT pw.*, 
+    `SELECT pw.project_id, pw.user_id, pw.project_name, pw.description, pw.target_budget, TO_CHAR(pw.start_date, 'YYYY-MM-DD') AS start_date, TO_CHAR(pw.target_date, 'YYYY-MM-DD') AS target_date, pw.status, pw.created_at, pw.updated_at,
             COALESCE(SUM(pe.amount), 0) AS total_spent
      FROM project_workspaces pw
      LEFT JOIN project_expenses pe

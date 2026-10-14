@@ -16,6 +16,7 @@ async function findAllByUser(userId) {
         b.budget_amount,
         b.month,
         b.year,
+        b.priority,
         b.created_at,
         b.updated_at,
         COALESCE(SUM(e.amount), 0) AS actual_spent
@@ -27,7 +28,7 @@ async function findAllByUser(userId) {
         AND EXTRACT(MONTH FROM e.expense_date) = b.month
         AND EXTRACT(YEAR FROM e.expense_date) = b.year
      WHERE b.user_id = $1
-     GROUP BY b.budget_id, b.user_id, b.category_id, c.name, b.budget_amount, b.month, b.year, b.created_at, b.updated_at
+     GROUP BY b.budget_id, b.user_id, b.category_id, c.name, b.budget_amount, b.month, b.year, b.priority, b.created_at, b.updated_at
      ORDER BY b.year DESC, b.month DESC`,
     [userId]
   );
@@ -45,23 +46,23 @@ async function findByIdAndUser(budgetId, userId) {
   return result.rows[0] || null;
 }
 
-async function create({ userId, categoryId, budgetAmount, month, year }) {
+async function create({ userId, categoryId, budgetAmount, month, year, priority }) {
   const result = await db.query(
-    `INSERT INTO budgets (user_id, category_id, budget_amount, month, year)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO budgets (user_id, category_id, budget_amount, month, year, priority)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [userId, categoryId, budgetAmount, month, year]
+    [userId, categoryId, budgetAmount, month, year, priority || 'FLEXIBLE']
   );
   return result.rows[0];
 }
 
-async function update(budgetId, userId, { budgetAmount, month, year }) {
+async function update(budgetId, userId, { budgetAmount, month, year, priority }) {
   const result = await db.query(
     `UPDATE budgets
-     SET budget_amount = $1, month = $2, year = $3, updated_at = NOW()
-     WHERE budget_id = $4 AND user_id = $5
+     SET budget_amount = $1, month = $2, year = $3, priority = $4, updated_at = NOW()
+     WHERE budget_id = $5 AND user_id = $6
      RETURNING *`,
-    [budgetAmount, month, year, budgetId, userId]
+    [budgetAmount, month, year, priority || 'FLEXIBLE', budgetId, userId]
   );
   return result.rows[0] || null;
 }

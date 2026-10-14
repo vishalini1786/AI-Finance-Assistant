@@ -24,11 +24,15 @@ import {
 const INCOME_SOURCES = ['Salary', 'Freelance', 'Business', 'Scholarship', 'Rental', 'Other'];
 const PAYMENT_MODES = ['UPI', 'Credit Card', 'Debit Card', 'Net Banking', 'Cash', 'Auto Debit', 'Other'];
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
 
 function dateForInput(value) {
   if (!value) return todayIso();
-  return new Date(value).toISOString().slice(0, 10);
+  const d = new Date(value);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
 function formatDate(value) {
@@ -198,15 +202,23 @@ export const Expenses = () => {
       const result = await documentService.uploadReceipt(file);
       const extraction = result.extraction || {};
       if (activeTab === 'expenses') {
-        setExpenseForm((previous) => ({
-          ...previous,
-          amount: extraction.amount == null ? previous.amount : String(extraction.amount),
-          expenseDate: extraction.date || previous.expenseDate,
-          merchantName: extraction.merchant || previous.merchantName,
-          description: extraction.raw_text || previous.description,
-          documentTransactionId: result.transaction?.document_transaction_id,
-          sourceType: 'OCR',
-        }));
+        setExpenseForm((previous) => {
+          let catId = previous.categoryId;
+          if (extraction.suggestedCategory) {
+            const found = categories.find((c) => c.name.toLowerCase() === extraction.suggestedCategory.toLowerCase());
+            if (found) catId = String(found.category_id);
+          }
+          return {
+            ...previous,
+            categoryId: catId,
+            amount: extraction.amount == null ? previous.amount : String(extraction.amount),
+            expenseDate: extraction.date || previous.expenseDate,
+            merchantName: extraction.merchant || previous.merchantName,
+            description: extraction.raw_text || previous.description,
+            documentTransactionId: result.transaction?.document_transaction_id,
+            sourceType: 'OCR',
+          };
+        });
       } else {
         setIncomeForm((previous) => ({
           ...previous,
