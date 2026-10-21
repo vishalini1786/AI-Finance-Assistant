@@ -1,0 +1,1 @@
+expense_id,user_id,category_id,amount,expense_date,merchant_name,payment_mode,description,source_type,document_transaction_id,recurring_payment_id,created_at,updated_at

@@ -8,7 +8,7 @@ import api from './api';
 
 async function getSummary(params = {}) {
   const res = await api.get('/dashboard/summary', { params });
-  return res.data.data;
+  return res.data.data?.summary || res.data.data;
 }
 
 async function getRecentTransactions(params = {}) {
@@ -31,4 +31,29 @@ async function getAssistantContext() {
   return res.data.data.context;
 }
 
-export default { getSummary, getRecentTransactions, getCategoryExpenses, getMonthlyTrends, getAssistantContext };
+async function sendChatMessage(message, history = [], pendingTransaction = null) {
+  const res = await api.post('/dashboard/chat', { message, history, pendingTransaction });
+  return res.data.data;
+}
+
+async function confirmAiTransaction(pendingTransaction) {
+  const res = await api.post('/dashboard/ai/confirm-transaction', { pendingTransaction });
+  return res.data.data;
+}
+
+async function getInsights() {
+  const res = await api.get('/dashboard/insights');
+  return res.data.data.insights;
+}
+
+export default {
+  getSummary,
+  getRecentTransactions,
+  getCategoryExpenses,
+  getMonthlyTrends,
+  getAssistantContext,
+  sendChatMessage,
+  confirmAiTransaction,
+  getInsights,
+};
+

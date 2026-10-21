@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../../components/auth/AuthLayout';
-import { GoogleLoginButton } from '../../components/auth/GoogleLoginButton';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -61,9 +60,9 @@ export const LoginPage = () => {
     setIsLoading(true);
     try {
       const user = await login(email, password);
-      // is_onboarded comes from PostgreSQL.
-      // ProtectedRoute handles the redirect to /onboarding if needed.
-      if (user && !user.is_onboarded) {
+      if (user && user.role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else if (user && !user.is_onboarded) {
         navigate('/onboarding', { replace: true });
       } else {
         navigate('/dashboard', { replace: true });
@@ -174,7 +173,9 @@ export const LoginPage = () => {
             />
             <span className="text-slate-500 dark:text-slate-400 font-medium">Remember Me</span>
           </label>
-          <span className="text-sky-500 hover:underline cursor-pointer font-bold">Forgot Password?</span>
+          <Link to="/forgot-password" className="text-sky-500 hover:underline font-bold">
+            Forgot Password?
+          </Link>
         </div>
 
         {/* Submit */}
@@ -194,14 +195,7 @@ export const LoginPage = () => {
         </button>
       </form>
 
-      <div className="relative my-5 text-center">
-        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-800"></div></div>
-        <span className="relative bg-white dark:bg-slate-900 px-3 text-[10px] font-bold text-slate-400 uppercase">OR</span>
-      </div>
-
-      <GoogleLoginButton />
-
-      <div className="flex flex-col items-center gap-2 mt-5 text-xs text-slate-500 dark:text-slate-400">
+      <div className="flex flex-col items-center gap-2 mt-6 text-xs text-slate-500 dark:text-slate-400">
         <p>
           Don't have an account?{' '}
           <Link to="/register" className="font-extrabold text-sky-500 hover:underline">

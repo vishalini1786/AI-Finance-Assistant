@@ -161,7 +161,17 @@ async function updateProjectExpense(expenseId, projectId, userId, fields) {
 }
 
 async function deleteProjectExpense(expenseId, projectId, userId) {
-  const expense = await projectExpenseRepository.deleteProjectExpense(expenseId, projectId, userId);
+  const normalizedExpenseId = Number(expenseId);
+  const normalizedProjectId = Number(projectId);
+
+  if (!Number.isInteger(normalizedExpenseId) || !Number.isInteger(normalizedProjectId)) {
+    const error = new Error('Project expense not found');
+    error.statusCode = 404;
+    error.expose = true;
+    throw error;
+  }
+
+  const expense = await projectExpenseRepository.deleteProjectExpense(normalizedExpenseId, normalizedProjectId, userId);
   if (!expense) {
     const error = new Error('Project expense not found');
     error.statusCode = 404;

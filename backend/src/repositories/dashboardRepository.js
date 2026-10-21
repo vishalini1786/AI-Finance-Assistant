@@ -37,9 +37,9 @@ async function getCurrentMonthTotals(userId) {
   const result = await db.query(
     `SELECT
        (SELECT COALESCE(SUM(amount), 0) FROM incomes
-        WHERE user_id = $1 AND DATE_TRUNC('month', income_date) = DATE_TRUNC('month', CURRENT_DATE)) AS income,
+        WHERE user_id = $1 AND TO_CHAR(income_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')) AS income,
        (SELECT COALESCE(SUM(amount), 0) FROM expenses
-        WHERE user_id = $1 AND DATE_TRUNC('month', expense_date) = DATE_TRUNC('month', CURRENT_DATE)) AS expenses`,
+        WHERE user_id = $1 AND TO_CHAR(expense_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')) AS expenses`,
     [userId]
   );
   return {
@@ -76,9 +76,9 @@ async function getRecentTransactions(userId, limit = 10, { startDate, endDate } 
   
   const result = await db.query(
     `SELECT e.expense_id, e.amount, TO_CHAR(e.expense_date, 'YYYY-MM-DD') AS expense_date, e.merchant_name,
-            e.description, c.name AS category_name
+            e.description, e.payment_mode, COALESCE(c.name, 'Other') AS category_name
      FROM expenses e
-     JOIN categories c ON c.category_id = e.category_id
+     LEFT JOIN categories c ON c.category_id = e.category_id
      WHERE e.user_id = $1 ${dateFilter}
      ORDER BY e.expense_date DESC, e.expense_id DESC
      LIMIT $${limitIndex}`,
@@ -94,20 +94,34 @@ async function getCategoryWiseExpenses(userId, { startDate, endDate } = {}) {
   if (startDate || endDate) {
     dateFilter = buildDateFilter('e.expense_date', startDate, endDate, values);
   } else {
-    // Fallback to current month if no filter
-    dateFilter = ` AND EXTRACT(MONTH FROM e.expense_date) = EXTRACT(MONTH FROM CURRENT_DATE)
-                   AND EXTRACT(YEAR FROM e.expense_date) = EXTRACT(YEAR FROM CURRENT_DATE)`;
+    // Current month filter
+    dateFilter = ` AND TO_CHAR(e.expense_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')`;
   }
 
-  const result = await db.query(
-    `SELECT c.name AS category_name, COALESCE(SUM(e.amount), 0) AS total_amount
+  let result = await db.query(
+    `SELECT COALESCE(c.name, 'Other') AS category_name, COALESCE(SUM(e.amount), 0) AS total_amount
      FROM expenses e
-     JOIN categories c ON c.category_id = e.category_id
+     LEFT JOIN categories c ON c.category_id = e.category_id
      WHERE e.user_id = $1 ${dateFilter}
-     GROUP BY c.name
+     GROUP BY COALESCE(c.name, 'Other')
      ORDER BY total_amount DESC`,
     values
   );
+
+  // If no date filter was requested and current month is empty, fall back to overall expenses
+  // so charts and breakdowns are not empty when user has valid records
+  if (result.rows.length === 0 && !startDate && !endDate) {
+    result = await db.query(
+      `SELECT COALESCE(c.name, 'Other') AS category_name, COALESCE(SUM(e.amount), 0) AS total_amount
+       FROM expenses e
+       LEFT JOIN categories c ON c.category_id = e.category_id
+       WHERE e.user_id = $1
+       GROUP BY COALESCE(c.name, 'Other')
+       ORDER BY total_amount DESC`,
+      [userId]
+    );
+  }
+
   return result.rows;
 }
 
@@ -139,13 +153,13 @@ async function getMonthlyTrends(userId, { startDate, endDate } = {}) {
         INTERVAL '1 month'
      ) AS month_series
      LEFT JOIN (
-        SELECT date_trunc('month', income_date) AS month, SUM(amount) AS total
+        SELECT TO_CHAR(income_date, 'YYYY-MM') AS month_str, SUM(amount) AS total
         FROM incomes WHERE user_id = $1 GROUP BY 1
-     ) income ON income.month = month_series
+     ) income ON income.month_str = TO_CHAR(month_series, 'YYYY-MM')
      LEFT JOIN (
-        SELECT date_trunc('month', expense_date) AS month, SUM(amount) AS total
+        SELECT TO_CHAR(expense_date, 'YYYY-MM') AS month_str, SUM(amount) AS total
         FROM expenses WHERE user_id = $1 GROUP BY 1
-     ) expense ON expense.month = month_series
+     ) expense ON expense.month_str = TO_CHAR(month_series, 'YYYY-MM')
      ORDER BY month_series`,
     values
   );
@@ -179,8 +193,7 @@ async function getOverallBudgetUtilization(userId, { startDate, endDate } = {}) 
     budgetMonthFilter = bFilter;
 
   } else {
-    expenseDateFilter = ` AND EXTRACT(MONTH FROM expense_date) = EXTRACT(MONTH FROM CURRENT_DATE)
-                          AND EXTRACT(YEAR FROM expense_date) = EXTRACT(YEAR FROM CURRENT_DATE)`;
+    expenseDateFilter = ` AND TO_CHAR(expense_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')`;
     budgetMonthFilter = ` AND b.month = EXTRACT(MONTH FROM CURRENT_DATE)
                           AND b.year = EXTRACT(YEAR FROM CURRENT_DATE)`;
   }

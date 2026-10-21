@@ -1,0 +1,11 @@
+category_id,user_id,name,description,priority,created_at
+1,,Food,Groceries restaurants and takeout,ESSENTIAL,2026-01-01 00:00:00
+2,,Shopping,Clothing electronics and general shopping,DISCRETIONARY,2026-01-01 00:00:00
+3,,Medical,Doctor visits medicine and health expenses,CRITICAL,2026-01-01 00:00:00
+4,,Education,Tuition courses and books,IMPORTANT,2026-01-01 00:00:00
+5,,Transportation,Fuel public transport ride-hailing,ESSENTIAL,2026-01-01 00:00:00
+6,,Entertainment,Movies games subscriptions and hobbies,DISCRETIONARY,2026-01-01 00:00:00
+7,,Bills,Electricity water internet and phone bills,CRITICAL,2026-01-01 00:00:00
+8,,Insurance,Health life and vehicle insurance premiums,IMPORTANT,2026-01-01 00:00:00
+9,,Investments,Money moved into investment accounts,IMPORTANT,2026-01-01 00:00:00
+10,,Others,Anything that does not fit another category,FLEXIBLE,2026-01-01 00:00:00

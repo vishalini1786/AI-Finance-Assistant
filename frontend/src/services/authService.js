@@ -12,7 +12,6 @@ import api from './api';
 async function register({ name, email, password, phone }) {
   const res = await api.post('/auth/register', { name, email, password, phone });
   const { user, token } = res.data.data;
-  // Only store the JWT token — NOT user data. User data lives in PostgreSQL.
   localStorage.setItem('finman_token', token);
   return user;
 }
@@ -29,8 +28,34 @@ async function login({ email, password }) {
 }
 
 /**
+ * Sign in with Google (either verified ID token credential or demo fallback).
+ * Returns user object + custom application JWT token.
+ */
+async function googleLogin({ credential, demoEmail, demoName }) {
+  const res = await api.post('/auth/google', { credential, demoEmail, demoName });
+  const { user, token } = res.data.data;
+  localStorage.setItem('finman_token', token);
+  return user;
+}
+
+/**
+ * Request password reset instructions via email.
+ */
+async function forgotPassword(email) {
+  const res = await api.post('/auth/forgot-password', { email });
+  return res.data;
+}
+
+/**
+ * Reset password using verification token.
+ */
+async function resetPassword({ token, password }) {
+  const res = await api.post('/auth/reset-password', { token, password });
+  return res.data;
+}
+
+/**
  * Clear the JWT token from localStorage.
- * User data is in PostgreSQL — nothing else to clear.
  */
 function logout() {
   localStorage.removeItem('finman_token');
@@ -38,8 +63,6 @@ function logout() {
 
 /**
  * Fetch the currently authenticated user's full profile from PostgreSQL.
- * Called on app load if a JWT token exists in localStorage.
- * This is the mechanism for session persistence after page refresh.
  */
 async function getCurrentUser() {
   const res = await api.get('/auth/me');
@@ -47,21 +70,28 @@ async function getCurrentUser() {
 }
 
 /**
- * Check whether a JWT token is stored (i.e. user is likely authenticated).
- * The token is verified by the backend on every protected request.
+ * Check whether a JWT token is stored.
  */
 function isAuthenticated() {
   return Boolean(localStorage.getItem('finman_token'));
 }
 
 /**
- * Submit all onboarding data to the backend. Backend persists everything
- * to PostgreSQL and sets is_onboarded = TRUE.
- * Returns the updated user object.
+ * Submit all onboarding data to the backend.
  */
 async function completeOnboarding(onboardingData) {
   const res = await api.post('/users/onboarding', onboardingData);
   return res.data.data.user;
 }
 
-export default { register, login, logout, getCurrentUser, isAuthenticated, completeOnboarding };
+export default {
+  register,
+  login,
+  googleLogin,
+  forgotPassword,
+  resetPassword,
+  logout,
+  getCurrentUser,
+  isAuthenticated,
+  completeOnboarding,
+};

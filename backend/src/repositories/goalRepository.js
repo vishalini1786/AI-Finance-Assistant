@@ -35,6 +35,8 @@ async function create({ userId, goalName, targetAmount, currentAmount, targetDat
 }
 
 async function update(goalId, userId, fields) {
+  const status = fields.status || 'IN_PROGRESS';
+
   const result = await db.query(
     `UPDATE financial_goals
      SET goal_name = $1, target_amount = $2, current_amount = $3,
@@ -43,7 +45,7 @@ async function update(goalId, userId, fields) {
      RETURNING goal_id, user_id, goal_name, target_amount, current_amount,
                TO_CHAR(target_date, 'YYYY-MM-DD') AS target_date,
                status, created_at, updated_at`,
-    [fields.goalName, fields.targetAmount, fields.currentAmount, fields.targetDate || null, fields.status, goalId, userId]
+    [fields.goalName, fields.targetAmount, fields.currentAmount, fields.targetDate || null, status, goalId, userId]
   );
   return result.rows[0] || null;
 }

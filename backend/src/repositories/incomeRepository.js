@@ -52,4 +52,15 @@ async function remove(incomeId, userId) {
   return result.rowCount > 0;
 }
 
-module.exports = { findAllByUser, findByIdAndUser, create, update, remove };
+async function findByDate(userId, date) {
+  const result = await db.query(
+    `SELECT income_id, user_id, source, amount, TO_CHAR(income_date, 'YYYY-MM-DD') AS income_date, description, created_at, updated_at
+     FROM incomes
+     WHERE user_id = $1 AND income_date = $2::date
+     ORDER BY created_at DESC`,
+    [userId, date]
+  );
+  return result.rows;
+}
+
+module.exports = { findAllByUser, findByIdAndUser, create, update, remove, findByDate };

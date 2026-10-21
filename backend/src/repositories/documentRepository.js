@@ -17,6 +17,18 @@ async function updateStatus(documentId, userId, status) {
   return result.rows[0] || null;
 }
 
+async function updateDocumentType(documentId, userId, documentType) {
+  const allowedTypes = new Set(['RECEIPT', 'SALARY_SLIP', 'OTHER']);
+  if (!allowedTypes.has(documentType)) {
+    throw new Error('Unsupported document type');
+  }
+  const result = await db.query(
+    `UPDATE financial_documents SET document_type = $1 WHERE document_id = $2 AND user_id = $3 RETURNING *`,
+    [documentType, documentId, userId]
+  );
+  return result.rows[0] || null;
+}
+
 async function createTransaction({ documentId, amount, date, merchant, rawText, confidence }) {
   const result = await db.query(
     `INSERT INTO document_transactions
@@ -27,4 +39,4 @@ async function createTransaction({ documentId, amount, date, merchant, rawText, 
   return result.rows[0];
 }
 
-module.exports = { createDocument, updateStatus, createTransaction };
+module.exports = { createDocument, updateStatus, updateDocumentType, createTransaction };

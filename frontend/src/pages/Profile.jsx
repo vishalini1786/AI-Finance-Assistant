@@ -27,6 +27,9 @@ function buildForm(user) {
     monthlyIncome: user?.monthly_income == null ? '' : String(user.monthly_income),
     preferredLanguage: user?.preferred_language || 'en',
     themePreference: user?.theme_preference || 'light',
+    expenseReminderEnabled: user?.expense_reminder_enabled !== undefined ? Boolean(user.expense_reminder_enabled) : true,
+    expenseReminderTime: user?.expense_reminder_time || '21:00',
+    microExpensePromptsEnabled: user?.micro_expense_prompts_enabled !== undefined ? Boolean(user.micro_expense_prompts_enabled) : true,
   };
 }
 
@@ -77,6 +80,9 @@ export const Profile = () => {
         monthlyIncome: form.monthlyIncome === '' ? null : Number(form.monthlyIncome),
         preferredLanguage: form.preferredLanguage,
         themePreference: form.themePreference,
+        expenseReminderEnabled: form.expenseReminderEnabled,
+        expenseReminderTime: form.expenseReminderTime,
+        microExpensePromptsEnabled: form.microExpensePromptsEnabled,
       });
       setThemePreference(form.themePreference);
       setForm(buildForm(updatedUser));
@@ -224,6 +230,62 @@ export const Profile = () => {
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Daily Expense Reminders & Micro-Spending */}
+            <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Reminders & Spending Tracking
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="block font-bold text-slate-800 text-xs">Daily Expense Reminder</span>
+                      <span className="text-[11px] text-slate-400">In-app alert & email nudge</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={form.expenseReminderEnabled}
+                      onChange={(e) => setForm({ ...form, expenseReminderEnabled: e.target.checked })}
+                      className="w-4 h-4 accent-finman-blue cursor-pointer"
+                    />
+                  </div>
+                  {form.expenseReminderEnabled && (
+                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+                      <span className="text-slate-600 font-medium">Delivery Time:</span>
+                      <select
+                        value={form.expenseReminderTime}
+                        onChange={(e) => setForm({ ...form, expenseReminderTime: e.target.value })}
+                        className="border border-slate-200 rounded-lg p-1.5 text-xs outline-none bg-white font-semibold"
+                      >
+                        <option value="20:00">8:00 PM</option>
+                        <option value="21:00">9:00 PM</option>
+                        <option value="22:00">10:00 PM</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="block font-bold text-slate-800 text-xs">Micro-Spending Prompts</span>
+                      <span className="text-[11px] text-slate-400">Track small purchases ≤ ₹250</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={form.microExpensePromptsEnabled}
+                      onChange={(e) => setForm({ ...form, microExpensePromptsEnabled: e.target.checked })}
+                      className="w-4 h-4 accent-finman-blue cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 pt-1">
+                    Detects routine micro-transactions (chai, cab rides, impulse snacks) that drain monthly savings.
+                  </p>
+                </div>
               </div>
             </div>
 

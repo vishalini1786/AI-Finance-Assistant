@@ -775,66 +775,110 @@ export const Home = () => {
           {/* Draggable Comparison Slider Container */}
           <div
             ref={sliderRef}
-            onMouseDown={() => setIsDragging(true)}
-            onMouseUp={() => setIsDragging(false)}
-            onMouseLeave={() => setIsDragging(false)}
-            onMouseMove={(e) => isDragging && handleSliderMove(e.clientX)}
-            onTouchMove={handleTouchMove}
-            className="relative w-full h-[400px] rounded-3xl overflow-hidden border border-slate-800 shadow-2xl select-none cursor-ew-resize"
+            role="slider"
+            tabIndex={0}
+            aria-label="Life Without FinMan versus Life With FinMan"
+            aria-valuenow={sliderPos}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft') setSliderPos((p) => Math.max(0, p - 5));
+              if (e.key === 'ArrowRight') setSliderPos((p) => Math.min(100, p + 5));
+            }}
+            onPointerDown={(e) => {
+              setIsDragging(true);
+              e.currentTarget.setPointerCapture?.(e.pointerId);
+              handleSliderMove(e.clientX);
+            }}
+            onPointerMove={(e) => {
+              if (isDragging) handleSliderMove(e.clientX);
+            }}
+            onPointerUp={(e) => {
+              setIsDragging(false);
+              try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}
+            }}
+            onPointerCancel={() => setIsDragging(false)}
+            style={{ touchAction: 'none' }}
+            className="relative w-full min-h-[420px] rounded-3xl overflow-hidden border border-slate-800 shadow-2xl select-none cursor-ew-resize focus:outline-none focus:ring-2 focus:ring-sky-400"
           >
-            {/* RIGHT SIDE: WITH FINMAN (Default Full Background) */}
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-sky-950 to-slate-950 p-8 sm:p-12 flex flex-col justify-between">
-              <div className="flex items-center gap-3 text-sky-400 font-extrabold text-lg">
-                <Sparkles className="w-6 h-6" /> WITH FINMAN (Autonomous Intelligence)
+            {/* RIGHT PANEL: WITH FINMAN (Active from sliderPos to 100%) */}
+            <div
+              className="absolute inset-0 bg-gradient-to-br from-slate-900 via-sky-950 to-slate-950 p-6 sm:p-10 flex flex-col justify-between"
+              style={{ clipPath: `inset(0 0 0 ${sliderPos}%)` }}
+            >
+              <div className="ml-auto max-w-sm sm:max-w-md w-full flex flex-col justify-between h-full text-right sm:items-end">
+                <div className="flex items-center justify-end gap-2 sm:gap-3 text-sky-400 font-extrabold text-sm sm:text-lg mb-4">
+                  <span>WITH FINMAN (Autonomous Intelligence)</span>
+                  <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                </div>
+                <ul className="space-y-3 sm:space-y-4 text-xs sm:text-sm font-semibold my-auto">
+                  <li className="flex items-center justify-end gap-2.5 sm:gap-3 text-emerald-300">
+                    <span>Centralized real-time multi-bank data</span>
+                    <Check className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-emerald-400" />
+                  </li>
+                  <li className="flex items-center justify-end gap-2.5 sm:gap-3 text-emerald-300">
+                    <span>Automated AI expense categorization</span>
+                    <Check className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-emerald-400" />
+                  </li>
+                  <li className="flex items-center justify-end gap-2.5 sm:gap-3 text-emerald-300">
+                    <span>Predictive cash flow & 80C tax optimization</span>
+                    <Check className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-emerald-400" />
+                  </li>
+                  <li className="flex items-center justify-end gap-2.5 sm:gap-3 text-emerald-300">
+                    <span>24/7 Conversational AI Financial Advisor</span>
+                    <Check className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-emerald-400" />
+                  </li>
+                </ul>
+                <div className="pt-4 flex justify-end">
+                  <span className="text-[11px] sm:text-xs text-sky-400 font-bold bg-sky-500/10 border border-sky-400/30 px-3 py-1 rounded-full">
+                    ✨ Complete Financial Peace of Mind
+                  </span>
+                </div>
               </div>
-              <ul className="space-y-4 text-sm sm:text-base font-semibold max-w-md">
-                <li className="flex items-center gap-3 text-emerald-300">
-                  <Check className="w-5 h-5 shrink-0 text-emerald-400" /> Centralized real-time multi-bank data
-                </li>
-                <li className="flex items-center gap-3 text-emerald-300">
-                  <Check className="w-5 h-5 shrink-0 text-emerald-400" /> Automated AI expense categorization
-                </li>
-                <li className="flex items-center gap-3 text-emerald-300">
-                  <Check className="w-5 h-5 shrink-0 text-emerald-400" /> Predictive cash flow & 80C tax optimization
-                </li>
-                <li className="flex items-center gap-3 text-emerald-300">
-                  <Check className="w-5 h-5 shrink-0 text-emerald-400" /> 24/7 Conversational AI Financial Advisor
-                </li>
-              </ul>
-              <span className="text-xs text-sky-400 font-bold">✨ Complete Financial Peace of Mind</span>
             </div>
 
-            {/* LEFT SIDE: WITHOUT FINMAN (Clipped Overlay) */}
+            {/* LEFT PANEL: WITHOUT FINMAN (Active from 0% to sliderPos) */}
             <div
-              className="absolute top-0 bottom-0 left-0 bg-slate-950 p-8 sm:p-12 flex flex-col justify-between border-r border-sky-400/50 overflow-hidden"
-              style={{ width: `${sliderPos}%` }}
+              className="absolute inset-0 bg-slate-950 p-6 sm:p-10 flex flex-col justify-between border-r border-sky-400/50"
+              style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
             >
-              <div className="flex items-center gap-3 text-rose-400 font-extrabold text-lg whitespace-nowrap">
-                <X className="w-6 h-6" /> WITHOUT FINMAN (Manual Method)
+              <div className="max-w-sm sm:max-w-md w-full flex flex-col justify-between h-full text-left">
+                <div className="flex items-center gap-2 sm:gap-3 text-rose-400 font-extrabold text-sm sm:text-lg mb-4">
+                  <X className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                  <span>WITHOUT FINMAN (Manual Method)</span>
+                </div>
+                <ul className="space-y-3 sm:space-y-4 text-xs sm:text-sm font-semibold my-auto">
+                  <li className="flex items-center gap-2.5 sm:gap-3 text-rose-300">
+                    <X className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-rose-400" />
+                    <span>Manual tracking on chaotic spreadsheets</span>
+                  </li>
+                  <li className="flex items-center gap-2.5 sm:gap-3 text-rose-300">
+                    <X className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-rose-400" />
+                    <span>Scattered financial accounts & lost receipts</span>
+                  </li>
+                  <li className="flex items-center gap-2.5 sm:gap-3 text-rose-300">
+                    <X className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-rose-400" />
+                    <span>No personalized prediction or tax guidance</span>
+                  </li>
+                  <li className="flex items-center gap-2.5 sm:gap-3 text-rose-300">
+                    <X className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-rose-400" />
+                    <span>Limited financial awareness & high stress</span>
+                  </li>
+                </ul>
+                <div className="pt-4 flex justify-start">
+                  <span className="text-[11px] sm:text-xs text-rose-400 font-bold bg-rose-500/10 border border-rose-400/30 px-3 py-1 rounded-full">
+                    ⚠️ High Financial Friction
+                  </span>
+                </div>
               </div>
-              <ul className="space-y-4 text-sm sm:text-base font-semibold max-w-md whitespace-nowrap">
-                <li className="flex items-center gap-3 text-rose-300">
-                  <X className="w-5 h-5 shrink-0 text-rose-400" /> Manual tracking on chaotic spreadsheets
-                </li>
-                <li className="flex items-center gap-3 text-rose-300">
-                  <X className="w-5 h-5 shrink-0 text-rose-400" /> Scattered financial accounts & receipts
-                </li>
-                <li className="flex items-center gap-3 text-rose-300">
-                  <X className="w-5 h-5 shrink-0 text-rose-400" /> No personalized prediction or tax guidance
-                </li>
-                <li className="flex items-center gap-3 text-rose-300">
-                  <X className="w-5 h-5 shrink-0 text-rose-400" /> Limited financial awareness & stress
-                </li>
-              </ul>
-              <span className="text-xs text-rose-400 font-bold whitespace-nowrap">⚠️ High Financial Friction</span>
             </div>
 
             {/* Slider Handle Divider Line */}
             <div
-              className="absolute top-0 bottom-0 w-1 bg-sky-400 shadow-lg pointer-events-none z-30"
+              className="absolute top-0 bottom-0 w-1 bg-sky-400 shadow-2xl pointer-events-none z-30"
               style={{ left: `${sliderPos}%` }}
             >
-              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-9 h-9 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-xl border-2 border-white">
+              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-xl border-2 border-white cursor-grab">
                 <Sliders className="w-4 h-4" />
               </div>
             </div>

@@ -13,5 +13,10 @@ router.get('/recent-transactions', dashboardController.getRecentTransactions);
 router.get('/category-expenses', dashboardController.getCategoryExpenses);
 router.get('/monthly-trends', dashboardController.getMonthlyTrends);
 router.get('/assistant-context', dashboardController.getAssistantContext);
+router.post('/chat', dashboardController.chat);
+router.post('/ai/confirm-transaction', dashboardController.confirmAiTransaction);
+router.post('/confirm-transaction', dashboardController.confirmAiTransaction);
+router.get('/insights', dashboardController.getInsights);
 
 module.exports = router;
+

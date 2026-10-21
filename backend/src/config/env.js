@@ -1,7 +1,5 @@
-// env.js
-// Loads and validates environment variables in one place so the rest
-// of the app never touches process.env directly.
 
+// env.js
 require('dotenv').config();
 
 const requiredVars = [
@@ -13,12 +11,9 @@ const requiredVars = [
   'JWT_SECRET',
 ];
 
-// Fail fast and loudly if something important is missing.
-// This is much easier to debug than a random crash later.
 for (const key of requiredVars) {
   if (!process.env[key]) {
     console.error(`Missing required environment variable: ${key}`);
-    console.error('Did you create backend/.env from backend/.env.example?');
     process.exit(1);
   }
 }
@@ -33,6 +28,7 @@ module.exports = {
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
+    ssl: process.env.DB_SSL ? process.env.DB_SSL === 'true' : undefined,
   },
 
   jwt: {

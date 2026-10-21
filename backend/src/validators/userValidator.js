@@ -54,10 +54,22 @@ function validateOnboarding(body) {
     { key: 'financialExperience', val: financialExperience },
     { key: 'savingsHabit', val: savingsHabit },
     { key: 'investmentPreference', val: investmentPreference },
+    { key: 'expenseReminderTime', val: body.expenseReminderTime },
   ];
   for (const { key, val } of stringFields) {
     if (val !== undefined && val !== null && typeof val !== 'string') {
       errors.push(`${key} must be a string`);
+    }
+  }
+
+  // Boolean fields
+  const booleanFields = [
+    { key: 'expenseReminderEnabled', val: body.expenseReminderEnabled },
+    { key: 'microExpensePromptsEnabled', val: body.microExpensePromptsEnabled },
+  ];
+  for (const { key, val } of booleanFields) {
+    if (val !== undefined && val !== null && typeof val !== 'boolean') {
+      errors.push(`${key} must be a boolean`);
     }
   }
 

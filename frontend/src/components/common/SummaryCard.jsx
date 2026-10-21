@@ -61,6 +61,45 @@ export const SummaryCard = ({
     }
   };
 
+  // Parse numeric value defensively
+  let numericVal = 0;
+  let isNumeric = false;
+  let isNegativeAmount = false;
+
+  if (typeof amount === 'number') {
+    if (!isNaN(amount)) {
+      numericVal = amount;
+      isNumeric = true;
+      isNegativeAmount = amount < 0;
+    }
+  } else if (typeof amount === 'string') {
+    // Check if the string has a pure formatted number (e.g. "₹50,000" or "50000" or "-500")
+    const cleaned = amount.replace(/[₹\s,]/g, '');
+    const parsed = Number(cleaned);
+    if (!isNaN(parsed) && cleaned.trim() !== '') {
+      numericVal = parsed;
+      isNumeric = true;
+      isNegativeAmount = parsed < 0;
+    } else if (cleaned.trim() === '') {
+      numericVal = 0;
+      isNumeric = true;
+    }
+  } else if (amount == null) {
+    numericVal = 0;
+    isNumeric = true;
+  }
+
+  // Display value
+  let formattedDisplay = '0';
+  if (isCount) {
+    formattedDisplay = amount != null && amount !== '' ? String(amount) : (isNumeric ? '0' : '—');
+  } else if (!isNumeric) {
+    formattedDisplay = amount != null && amount !== '' ? String(amount) : '—';
+  } else {
+    formattedDisplay = Math.abs(numericVal).toLocaleString('en-IN');
+  }
+
+  const showCurrencyPrefix = !isCount && isNumeric;
   const theme = themes[type] || themes.blue;
 
   return (
@@ -78,16 +117,13 @@ export const SummaryCard = ({
             {title}
           </span>
           <div className="mt-2 flex items-baseline">
-            {!isCount && typeof amount === 'number' && (
+            {showCurrencyPrefix && (
               <span className="text-xl font-bold text-slate-500 mr-1 font-sans opacity-80">
-                {amount < 0 ? '-₹' : '₹'}
+                {isNegativeAmount ? '-₹' : '₹'}
               </span>
             )}
             <span className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 font-sans">
-              {isCount 
-                ? amount 
-                : (typeof amount === 'number' ? Math.abs(amount).toLocaleString('en-IN') : amount)
-              }
+              {formattedDisplay}
             </span>
           </div>
         </div>

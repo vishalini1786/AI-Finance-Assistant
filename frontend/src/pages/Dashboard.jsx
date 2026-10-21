@@ -9,6 +9,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   PieChart,
   Pie,
   Cell,
@@ -115,7 +116,8 @@ export const Dashboard = () => {
 
         if (!isMounted) return;
 
-        setSummary({ ...emptySummary, ...summaryData });
+        const unwrappedSummary = summaryData?.summary || summaryData || {};
+        setSummary({ ...emptySummary, ...unwrappedSummary });
         setTransactions(recentData || []);
         setCategoryExpenses(categoryData || []);
         setMonthlyTrends(trendData || []);
@@ -220,6 +222,7 @@ export const Dashboard = () => {
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
                       <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontWeight: 600 }} />
                       <Line type="monotone" dataKey="income" name="Income" stroke="#2563EB" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#FFFFFF' }} />
                       <Line type="monotone" dataKey="expense" name="Expenses" stroke="#EF4444" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#FFFFFF' }} />
                     </LineChart>
@@ -286,22 +289,36 @@ export const Dashboard = () => {
               </div>
 
               {donutChartData.length > 0 && (
-                <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 text-[11px]">
-                  {donutChartData.map((item) => (
-                    <div
-                      key={item.name}
-                      onMouseEnter={() => setActiveCategory(item)}
-                      onMouseLeave={() => setActiveCategory(null)}
-                      className={`flex items-center gap-1.5 font-bold cursor-pointer rounded-lg p-1.5 transition-all duration-200 ${
-                        activeCategory?.name === item.name
-                          ? 'bg-slate-900 text-white scale-105 shadow-md'
-                          : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.fill }} />
-                      <span className="truncate">{item.name}</span>
-                    </div>
-                  ))}
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                    {donutChartData.map((item) => {
+                      const pct = totalDonutSpent > 0 ? Math.round((item.value / totalDonutSpent) * 100) : 0;
+                      const isHovered = activeCategory?.name === item.name;
+                      return (
+                        <div
+                          key={item.name}
+                          onMouseEnter={() => setActiveCategory(item)}
+                          onMouseLeave={() => setActiveCategory(null)}
+                          className={`flex items-center justify-between gap-1.5 p-1.5 rounded-lg border transition-all duration-200 cursor-pointer ${
+                            isHovered
+                              ? 'bg-slate-900 border-slate-900 text-white shadow-md'
+                              : 'bg-slate-50/70 border-slate-100 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.fill }} />
+                            <span className="truncate font-bold">{item.name}</span>
+                          </div>
+                          <div className="shrink-0 text-right font-bold flex items-center gap-1">
+                            <span>{formatCurrency(item.value)}</span>
+                            <span className={`text-[9px] px-1 py-0.5 rounded ${isHovered ? 'bg-slate-800 text-sky-400' : 'bg-slate-200 text-slate-600'}`}>
+                              {pct}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

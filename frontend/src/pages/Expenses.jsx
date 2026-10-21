@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { SummaryCard } from '../components/common/SummaryCard';
 import expenseService from '../services/expenseService';
 import incomeService from '../services/incomeService';
-import documentService from '../services/documentService';
+import documentService, { DOCUMENT_UPLOAD_ACCEPT } from '../services/documentService';
 import categoryService from '../services/categoryService';
 import { formatCurrency } from '../utils/formatCurrency';
 import {
@@ -19,6 +20,10 @@ import {
   AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
+  Coffee,
+  AlertTriangle,
+  TrendingDown,
+  Wallet,
 } from 'lucide-react';
 
 const INCOME_SOURCES = ['Salary', 'Freelance', 'Business', 'Scholarship', 'Rental', 'Other'];
@@ -41,19 +46,24 @@ function formatDate(value) {
 }
 
 export const Expenses = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('expenses');
   const [expenses, setExpenses] = useState([]);
   const [income, setIncome] = useState([]);
   const [categories, setCategories] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [onlyMicroSpending, setOnlyMicroSpending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [modalMode, setModalMode] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [deficitWarning, setDeficitWarning] = useState(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrMessage, setOcrMessage] = useState('');
+  const [pendingDocumentScan, setPendingDocumentScan] = useState(null);
 
   const [expenseForm, setExpenseForm] = useState({
     categoryId: '',
@@ -101,6 +111,14 @@ export const Expenses = () => {
     }
   }, [categories, expenseForm.categoryId]);
 
+  useEffect(() => {
+    const pendingOcr = location.state?.pendingOcr;
+    if (!pendingOcr || categories.length === 0) return;
+    setActiveTab('expenses');
+    applyExpenseExtraction(pendingOcr);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.key, categories.length]);
+
   const totals = useMemo(() => {
     const totalExpenses = expenses.reduce((acc, item) => acc + Number(item.amount || 0), 0);
     const totalIncome = income.reduce((acc, item) => acc + Number(item.amount || 0), 0);
@@ -113,15 +131,25 @@ export const Expenses = () => {
     };
   }, [expenses, income]);
 
+  const microSpendingStats = useMemo(() => {
+    const microItems = expenses.filter((e) => Number(e.amount || 0) <= 250);
+    const total = microItems.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const count = microItems.length;
+    const annualDrain = total * 12;
+    const pctOfExpenses = totals.totalExpenses > 0 ? Math.round((total / totals.totalExpenses) * 100) : 0;
+    return { count, total, annualDrain, pctOfExpenses, items: microItems };
+  }, [expenses, totals.totalExpenses]);
+
   const filteredExpenses = useMemo(() => (
     expenses.filter((item) => {
       const q = searchTerm.toLowerCase();
       const title = `${item.merchant_name || ''} ${item.description || ''} ${item.category_name || ''}`.toLowerCase();
       const matchesSearch = title.includes(q);
       const matchesCategory = selectedCategory === 'All' || item.category_name === selectedCategory;
-      return matchesSearch && matchesCategory;
+      const matchesMicro = !onlyMicroSpending || Number(item.amount || 0) <= 250;
+      return matchesSearch && matchesCategory && matchesMicro;
     })
-  ), [expenses, searchTerm, selectedCategory]);
+  ), [expenses, searchTerm, selectedCategory, onlyMicroSpending]);
 
   const filteredIncome = useMemo(() => (
     income.filter((item) => {
@@ -183,67 +211,141 @@ export const Expenses = () => {
     });
   };
 
+  const [ocrWarning, setOcrWarning] = useState(null);
+  const [ocrConfirmed, setOcrConfirmed] = useState(false);
+
   const closeModal = () => {
     setModalMode(null);
     setEditingId(null);
     setSaving(false);
     setOcrLoading(false);
     setOcrMessage('');
+    setOcrWarning(null);
+    setOcrConfirmed(false);
   };
 
   const selectManualEntry = () => setModalMode(activeTab);
 
+  const applyExpenseExtraction = (scan) => {
+    const { extraction = {}, transaction } = scan || {};
+    setExpenseForm((previous) => {
+      let catId = previous.categoryId;
+      if (extraction.suggestedCategory) {
+        const found = categories.find((c) => c.name.toLowerCase() === extraction.suggestedCategory.toLowerCase());
+        if (found) catId = String(found.category_id);
+      }
+      return {
+        ...previous,
+        categoryId: catId,
+        amount: extraction.amount == null ? previous.amount : String(extraction.amount),
+        expenseDate: extraction.date || previous.expenseDate,
+        merchantName: extraction.merchant || previous.merchantName,
+        paymentMode: extraction.paymentMethod || previous.paymentMode || 'UPI',
+        description: extraction.description || previous.description || '',
+        documentTransactionId: transaction?.document_transaction_id,
+        sourceType: 'OCR',
+      };
+    });
+    setPendingDocumentScan(null);
+    setModalMode('expenses');
+
+    const numAmount = Number(extraction.amount);
+    const isImplausible = isNaN(numAmount) || numAmount <= 0 || numAmount > 100000;
+    const isLowConfidence = Boolean(extraction.isLowConfidence || (extraction.confidence != null && extraction.confidence < 0.60));
+
+    if (isLowConfidence || isImplausible) {
+      setOcrWarning({
+        confidence: extraction.confidence,
+        isImplausible,
+        message: isImplausible
+          ? 'The extracted amount appears implausible or missing. Please verify and confirm before saving.'
+          : 'Low-confidence extraction: Please carefully verify the merchant, amount, and items before saving.',
+      });
+      setOcrConfirmed(false);
+      setOcrMessage('');
+    } else {
+      setOcrWarning(null);
+      setOcrConfirmed(true);
+      setOcrMessage('Review the extracted fields, correct them if needed, then save.');
+    }
+  };
+
   const handleScan = async (event) => {
-    const file = event.target.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
     try {
       setOcrLoading(true);
+      setModalMode((currentMode) => currentMode || `choice-${activeTab}`);
       setOcrMessage('Processing document...');
       const result = await documentService.uploadReceipt(file);
       const extraction = result.extraction || {};
-      if (activeTab === 'expenses') {
-        setExpenseForm((previous) => {
-          let catId = previous.categoryId;
-          if (extraction.suggestedCategory) {
-            const found = categories.find((c) => c.name.toLowerCase() === extraction.suggestedCategory.toLowerCase());
-            if (found) catId = String(found.category_id);
-          }
-          return {
-            ...previous,
-            categoryId: catId,
-            amount: extraction.amount == null ? previous.amount : String(extraction.amount),
-            expenseDate: extraction.date || previous.expenseDate,
-            merchantName: extraction.merchant || previous.merchantName,
-            description: extraction.raw_text || previous.description,
-            documentTransactionId: result.transaction?.document_transaction_id,
-            sourceType: 'OCR',
-          };
-        });
+      const scan = { extraction, transaction: result.transaction };
+      const candidate = extraction.transactionType
+        || (extraction.isSalarySlip || extraction.documentType === 'SALARY_SLIP' ? 'INCOME' : 'UNKNOWN');
+      if (candidate === 'INCOME') {
+        setPendingDocumentScan(scan);
+        setModalMode('type-warning');
+        setOcrMessage('');
       } else {
-        setIncomeForm((previous) => ({
-          ...previous,
-          amount: extraction.amount == null ? previous.amount : String(extraction.amount),
-          incomeDate: extraction.date || previous.incomeDate,
-          description: extraction.raw_text || previous.description,
-          documentTransactionId: result.transaction?.document_transaction_id,
-        }));
+        applyExpenseExtraction(scan);
       }
-      setModalMode(activeTab);
-      setOcrMessage('Review the extracted fields, correct them if needed, then save.');
     } catch (err) {
-      setOcrMessage(err?.response?.data?.message || 'OCR is temporarily unavailable.');
+      setOcrMessage(err?.response?.data?.message || 'Could not process this document. Enter the values manually or try again.');
     } finally {
+      input.value = '';
       setOcrLoading(false);
     }
   };
 
-  const saveExpense = async (event) => {
-    event.preventDefault();
+  const reviewPendingAsIncome = () => {
+    navigate('/income', { state: { pendingOcr: pendingDocumentScan } });
+    setPendingDocumentScan(null);
+    setModalMode(null);
+  };
+
+  const executeSaveExpense = async (force = false) => {
+    if (saving) return;
     if (!expenseForm.categoryId || !expenseForm.amount || !expenseForm.expenseDate) return;
+
+    if (expenseForm.sourceType === 'OCR' && ocrWarning && !ocrConfirmed) {
+      setError('Please review the extracted values and check the verification box before saving.');
+      return;
+    }
+
+    const expAmount = Number(expenseForm.amount);
+    const expenseYearMonth = expenseForm.expenseDate.slice(0, 7); // 'YYYY-MM'
+
+    if (!force) {
+      // Find recorded income for the selected month
+      const monthIncome = income
+        .filter((i) => (i.income_date || '').startsWith(expenseYearMonth))
+        .reduce((acc, i) => acc + Number(i.amount || 0), 0);
+
+      // Find current expenses for the selected month (excluding editing record)
+      const existingExpenses = expenses
+        .filter((e) => (e.expense_date || '').startsWith(expenseYearMonth) && (!editingId || e.expense_id !== editingId))
+        .reduce((acc, e) => acc + Number(e.amount || 0), 0);
+
+      const projectedTotal = existingExpenses + expAmount;
+
+      if (monthIncome > 0 && projectedTotal > monthIncome) {
+        setDeficitWarning({
+          month: expenseYearMonth,
+          monthIncome,
+          currentExpenses: existingExpenses,
+          newExpense: expAmount,
+          projectedTotal,
+          projectedDeficit: projectedTotal - monthIncome,
+        });
+        setModalMode('deficit-warning');
+        return;
+      }
+    }
 
     const payload = {
       categoryId: Number(expenseForm.categoryId),
-      amount: Number(expenseForm.amount),
+      amount: expAmount,
       expenseDate: expenseForm.expenseDate,
       merchantName: expenseForm.merchantName.trim() || undefined,
       paymentMode: expenseForm.paymentMode,
@@ -267,8 +369,14 @@ export const Expenses = () => {
     }
   };
 
+  const saveExpense = (event) => {
+    event.preventDefault();
+    executeSaveExpense(false);
+  };
+
   const saveIncome = async (event) => {
     event.preventDefault();
+    if (saving) return;
     if (!incomeForm.source || !incomeForm.amount || !incomeForm.incomeDate) return;
 
     const payload = {
@@ -319,16 +427,29 @@ export const Expenses = () => {
   return (
     <MainLayout>
       <PageHeader
-        title="Income & Expense Ledger"
-        subtitle="PostgreSQL-backed financial records with authenticated CRUD"
+        title="Expense Records"
+        subtitle="PostgreSQL-backed expense records, receipt scanning, and budget tracking"
         rightElement={
-          <button
-            onClick={openAddModal}
-            disabled={activeTab === 'expenses' && categories.length === 0}
-            className="flex items-center gap-1.5 px-4 py-2 bg-finman-blue hover:bg-finman-blueDark disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md hover:shadow-blue-500/20 transition-all"
-          >
-            <Plus className="w-4 h-4" /> {activeTab === 'expenses' ? 'Add Expense' : 'Add Income'}
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-finman-blue text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-colors">
+              {ocrLoading ? <Loader2 className="w-4 h-4 animate-spin text-finman-blue" /> : <Receipt className="w-4 h-4 text-finman-blue" />}
+              <span>{ocrLoading ? 'Scanning...' : 'Scan Receipt'}</span>
+              <input
+                type="file"
+                accept={DOCUMENT_UPLOAD_ACCEPT}
+                className="hidden"
+                onChange={handleScan}
+                disabled={ocrLoading}
+              />
+            </label>
+            <button
+              onClick={openAddModal}
+              disabled={categories.length === 0}
+              className="flex items-center gap-1.5 px-4 py-2 bg-finman-blue hover:bg-finman-blueDark disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md hover:shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Add Expense
+            </button>
+          </div>
         }
       />
 
@@ -351,24 +472,56 @@ export const Expenses = () => {
         <SummaryCard title="Ledger Records" amount={totals.expenseCount + totals.incomeCount} isCount indicator="Persistent rows" type="teal" />
       </div>
 
+      {/* Micro-Spending Intelligence Card */}
+      {activeTab === 'expenses' && (
+        <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <Coffee className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-xs text-amber-950 uppercase tracking-wider">
+                  Micro-Spending Tracking (≤ ₹250)
+                </span>
+                <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                  {microSpendingStats.count} purchases
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                Totaled <strong className="text-amber-900">{formatCurrency(microSpendingStats.total)}</strong> ({microSpendingStats.pctOfExpenses}% of expenses) • Annualized drain:{' '}
+                <strong className="text-amber-900">{formatCurrency(microSpendingStats.annualDrain)}/yr</strong>
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setOnlyMicroSpending(!onlyMicroSpending)}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              onlyMicroSpending
+                ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                : 'bg-white text-slate-700 border-slate-200 hover:border-amber-400'
+            }`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            <span>{onlyMicroSpending ? 'Showing Only ≤ ₹250' : 'Filter Micro-Purchases (≤ ₹250)'}</span>
+          </button>
+        </div>
+      )}
+
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-2 w-full lg:w-auto">
-          <button
-            onClick={() => setActiveTab('expenses')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'expenses' ? 'bg-finman-blue text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
+          <span className="px-4 py-2 rounded-xl text-xs font-black bg-finman-blue text-white shadow-sm">
             Expenses
-          </button>
-          <button
-            onClick={() => setActiveTab('income')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'income' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
+          </span>
+          <Link
+            to="/income"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            Income
-          </button>
+            <Wallet className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Income Page →</span>
+          </Link>
         </div>
 
         <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 w-full lg:w-96 focus-within:ring-2 focus-within:ring-finman-blue/20 focus-within:border-finman-blue focus-within:bg-white transition-all">
@@ -435,7 +588,12 @@ export const Expenses = () => {
                     </td>
                     <td className="py-4 px-4 text-slate-500 font-semibold">{item.payment_mode || 'Manual'}</td>
                     <td className="py-4 px-4 text-right font-black text-rose-600 text-sm">
-                      -{formatCurrency(item.amount)}
+                      <div>-{formatCurrency(item.amount)}</div>
+                      {Number(item.amount) <= 250 && (
+                        <span className="inline-block text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-1.5 py-0.2 rounded mt-0.5">
+                          ≤ ₹250
+                        </span>
+                      )}
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center justify-center gap-1.5">
@@ -508,28 +666,173 @@ export const Expenses = () => {
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-bold text-slate-900">
-                {editingId ? 'Edit' : 'Add'} {modalMode.includes('expenses') ? 'Expense' : 'Income'}
+                {modalMode === 'deficit-warning'
+                  ? 'Spending Deficit Warning'
+                  : `${editingId ? 'Edit' : 'Add'} ${modalMode.includes('expenses') ? 'Expense' : 'Income'}`}
               </h3>
               <button onClick={closeModal} type="button">
                 <X className="w-4 h-4 text-slate-400 hover:text-slate-600" />
               </button>
             </div>
 
-            {modalMode.startsWith('choice-') ? (
+            {modalMode === 'type-warning' && pendingDocumentScan ? (
+              <div className="space-y-4 text-xs">
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-950">
+                  <strong className="block mb-1">This document appears to be a salary slip, not an expense receipt. Would you like to process it as income instead?</strong>
+                  <p>Review it as income, continue with expense entry, or cancel. No income or expense will be recorded until you confirm the reviewed form.</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={reviewPendingAsIncome}
+                    className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700"
+                  >
+                    Review as Income
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyExpenseExtraction(pendingDocumentScan)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50"
+                  >
+                    Continue as Expense
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingDocumentScan(null);
+                      setModalMode(null);
+                      setOcrMessage('');
+                    }}
+                    className="w-full px-4 py-2 text-slate-500 font-bold hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : modalMode === 'deficit-warning' && deficitWarning ? (
+              <div className="space-y-4 text-xs">
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 flex items-start gap-2.5">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-bold text-xs mb-1">
+                      Projected Monthly Deficit Detected
+                    </strong>
+                    <p className="text-[11px] leading-relaxed text-rose-800">
+                      Recording this expense will cause your spending for{' '}
+                      <strong>{deficitWarning.month}</strong> to exceed your total recorded income by{' '}
+                      <strong className="text-rose-950 font-black">{formatCurrency(deficitWarning.projectedDeficit)}</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Recorded Month Income:</span>
+                    <strong className="text-emerald-700">{formatCurrency(deficitWarning.monthIncome)}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Current Month Expenses:</span>
+                    <span className="text-slate-700 font-semibold">{formatCurrency(deficitWarning.currentExpenses)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-200 pt-1.5">
+                    <span className="text-slate-500">New Expense Amount:</span>
+                    <strong className="text-rose-600">+{formatCurrency(deficitWarning.newExpense)}</strong>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-200 pt-1.5 font-bold">
+                    <span className="text-rose-700">Projected Deficit:</span>
+                    <span className="text-rose-700 font-black">-{formatCurrency(deficitWarning.projectedDeficit)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeModal();
+                      setActiveTab('income');
+                      setEditingId(null);
+                      setIncomeForm({
+                        source: 'Salary',
+                        amount: '',
+                        incomeDate: todayIso(),
+                        description: '',
+                      });
+                      setModalMode('income');
+                    }}
+                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <span>Add Missing Income Instead</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setModalMode('expenses')}
+                    className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors"
+                  >
+                    Go Back & Edit Expense
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => executeSaveExpense(true)}
+                    className="w-full py-2 px-3 rounded-xl text-rose-600 hover:bg-rose-50 text-center font-bold text-xs transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'Recording...' : 'Continue & Record Expense Anyway'}
+                  </button>
+                </div>
+              </div>
+            ) : modalMode.startsWith('choice-') ? (
               <div className="space-y-3 text-xs">
                 <p className="font-semibold text-slate-600">How would you like to add this {activeTab === 'expenses' ? 'expense' : 'income'}?</p>
                 <button type="button" onClick={selectManualEntry} className="w-full p-4 rounded-xl border border-slate-200 text-left hover:border-finman-blue"><strong>Enter Manually</strong><span className="block text-slate-400 mt-1">Use the existing form.</span></button>
-                <label className="block w-full p-4 rounded-xl border border-slate-200 text-left hover:border-finman-blue cursor-pointer"><strong>{activeTab === 'expenses' ? 'Scan Bill' : 'Scan Document'}</strong><span className="block text-slate-400 mt-1">Extract fields for your confirmation.</span><input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleScan} disabled={ocrLoading} className="mt-3 block w-full text-xs" /></label>
+                <label className="block w-full p-4 rounded-xl border border-slate-200 text-left hover:border-finman-blue cursor-pointer"><strong>Scan or Upload Document</strong><span className="block text-slate-400 mt-1">PNG, JPG/JPEG, or PDF. Review extracted fields before saving.</span><input type="file" accept={DOCUMENT_UPLOAD_ACCEPT} onChange={handleScan} disabled={ocrLoading} className="mt-3 block w-full text-xs" /></label>
                 {ocrMessage && <p className="text-slate-500">{ocrMessage}</p>}
               </div>
             ) : modalMode === 'expenses' ? (
               <form onSubmit={saveExpense} className="space-y-4 text-xs">
+                {ocrWarning && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-amber-800 dark:text-amber-200 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-xs">Review Required: {ocrWarning.message}</p>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-0.5">
+                          Extracted values require verification. Check that the amount, merchant, and details match your receipt.
+                        </p>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 pt-1.5 border-t border-amber-200/60 dark:border-amber-800/60 cursor-pointer text-xs font-semibold">
+                      <input
+                        type="checkbox"
+                        checked={ocrConfirmed}
+                        onChange={(e) => {
+                          setOcrConfirmed(e.target.checked);
+                          if (e.target.checked) setError('');
+                        }}
+                        className="rounded text-finman-blue focus:ring-finman-blue"
+                      />
+                      <span>I have verified the merchant and amount values</span>
+                    </label>
+                  </div>
+                )}
+
+                {ocrMessage && !ocrWarning && (
+                  <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-800 dark:text-blue-200 text-xs flex items-center gap-2">
+                    <Receipt className="w-4 h-4 shrink-0 text-finman-blue" />
+                    <span>{ocrMessage}</span>
+                  </div>
+                )}
+
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Merchant / Recipient</label>
                   <input
                     type="text"
                     value={expenseForm.merchantName}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, merchantName: e.target.value })}
+                    onChange={(e) => {
+                      setExpenseForm({ ...expenseForm, merchantName: e.target.value });
+                    }}
                     placeholder="e.g. grocery store, fuel station"
                     className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                   />
@@ -543,8 +846,10 @@ export const Expenses = () => {
                       step="0.01"
                       required
                       value={expenseForm.amount}
-                      onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                      onChange={(e) => {
+                        setExpenseForm({ ...expenseForm, amount: e.target.value });
+                      }}
+                      className={`w-full border ${ocrWarning && !ocrConfirmed ? 'border-amber-400 bg-amber-50/20' : 'border-slate-200'} rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium`}
                     />
                   </div>
                   <div>
@@ -594,7 +899,7 @@ export const Expenses = () => {
                     className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                   />
                 </div>
-                <ModalActions saving={saving} onCancel={closeModal} submitText={editingId ? 'Update Expense' : 'Save Expense'} />
+                <ModalActions saving={saving} onCancel={closeModal} submitText={expenseForm.sourceType === 'OCR' && ocrWarning && !ocrConfirmed ? 'Confirm & Save Expense' : (editingId ? 'Update Expense' : 'Save Expense')} />
               </form>
             ) : (
               <form onSubmit={saveIncome} className="space-y-4 text-xs">

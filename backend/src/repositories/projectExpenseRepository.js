@@ -1,6 +1,14 @@
 // projectExpenseRepository.js
 const db = require('../config/database');
 
+function normalizeProjectExpense(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    expense_id: row.project_expense_id,
+  };
+}
+
 async function createProjectExpense({ projectId, userId, expenseName, category, amount, expenseDate, paymentMode, description }) {
   const result = await db.query(
     `INSERT INTO project_expenses (project_id, user_id, expense_name, category, amount, expense_date, payment_mode, description)
@@ -8,7 +16,7 @@ async function createProjectExpense({ projectId, userId, expenseName, category, 
      RETURNING *`,
     [projectId, userId, expenseName, category, amount, expenseDate, paymentMode, description]
   );
-  return result.rows[0];
+  return normalizeProjectExpense(result.rows[0]);
 }
 
 async function getProjectExpenses(projectId, userId) {
@@ -18,7 +26,7 @@ async function getProjectExpenses(projectId, userId) {
      ORDER BY expense_date DESC, created_at DESC`,
     [projectId, userId]
   );
-  return result.rows;
+  return result.rows.map(normalizeProjectExpense);
 }
 
 async function getProjectExpenseById(expenseId, projectId, userId) {
@@ -26,7 +34,7 @@ async function getProjectExpenseById(expenseId, projectId, userId) {
     `SELECT project_expense_id, project_id, user_id, expense_name, category, amount, TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date, payment_mode, description, created_at, updated_at FROM project_expenses WHERE project_expense_id = $1 AND project_id = $2 AND user_id = $3`,
     [expenseId, projectId, userId]
   );
-  return result.rows[0] || null;
+  return normalizeProjectExpense(result.rows[0] || null);
 }
 
 async function updateProjectExpense(expenseId, projectId, userId, fields) {
@@ -55,7 +63,7 @@ async function updateProjectExpense(expenseId, projectId, userId, fields) {
     values
   );
 
-  return result.rows[0] || null;
+  return normalizeProjectExpense(result.rows[0] || null);
 }
 
 async function deleteProjectExpense(expenseId, projectId, userId) {
@@ -65,7 +73,7 @@ async function deleteProjectExpense(expenseId, projectId, userId) {
      RETURNING *`,
     [expenseId, projectId, userId]
   );
-  return result.rows[0] || null;
+  return normalizeProjectExpense(result.rows[0] || null);
 }
 
 module.exports = {

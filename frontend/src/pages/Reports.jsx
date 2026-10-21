@@ -48,16 +48,34 @@ export const Reports = () => {
   }, [periodType, selectedMonth, selectedYear, startDate, endDate]);
 
   useEffect(() => {
+    setError('');
     if (periodType === 'Daily') {
+      if (!selectedDate) {
+        setDailyData(null);
+        return;
+      }
       setLoading(true);
       expenseService.getDailyReport(selectedDate)
-        .then(d => { setDailyData(d); setData(null); })
-        .catch(() => setError('Failed to load daily report.'))
+        .then(d => {
+          setDailyData(d);
+          setData(null);
+        })
+        .catch(err => {
+          setError(err?.response?.data?.message || 'Failed to load daily report.');
+          setDailyData(null);
+        })
         .finally(() => setLoading(false));
     } else {
-      if (periodType === 'Custom' && (!startDate || !endDate)) {
-        setData(null);
-        return;
+      if (periodType === 'Custom') {
+        if (!startDate || !endDate) {
+          setData(null);
+          return;
+        }
+        if (startDate > endDate) {
+          setError('Start date cannot be after end date.');
+          setData(null);
+          return;
+        }
       }
       setLoading(true);
       Promise.all([
@@ -67,10 +85,12 @@ export const Reports = () => {
       ]).then(([summary, trends, categories]) => {
         setData({ summary, trends, categories });
         setDailyData(null);
-      }).catch(() => setError('Unable to load reports.'))
-        .finally(() => setLoading(false));
+      }).catch(err => {
+        setError(err?.response?.data?.message || 'Unable to load reports.');
+        setData(null);
+      }).finally(() => setLoading(false));
     }
-  }, [periodType, queryParams, selectedDate]);
+  }, [periodType, queryParams, selectedDate, startDate, endDate]);
 
   const downloadPdf = () => {
     if (periodType === 'Daily') {
@@ -164,8 +184,10 @@ export const Reports = () => {
         <div className="py-24 flex justify-center text-slate-400"><Loader2 className="animate-spin w-8 h-8" /></div>
       ) : periodType === 'Daily' && dailyData ? (
         <DailyReportView data={dailyData} date={selectedDate} />
+      ) : periodType === 'Custom' && (!startDate || !endDate) ? (
+        <div className="py-24 text-center text-slate-400 text-sm font-semibold">Select start and end dates to view custom period report.</div>
       ) : !data ? (
-        <div className="py-24 text-center text-slate-400 text-sm font-semibold">Select a valid date range to view reports.</div>
+        <div className="py-24 text-center text-slate-400 text-sm font-semibold">No records found for the selected period.</div>
       ) : (
         <PeriodReportView data={data} periodLabel={periodLabel()} />
       )}
@@ -174,9 +196,12 @@ export const Reports = () => {
 };
 
 function DailyReportView({ data, date }) {
-  const { expenses = [], summary = {} } = data;
+  const { expenses = [], incomes = [], summary = {} } = data;
   const totalExpenses = Number(summary.total_expenses || 0);
+  const totalIncome = Number(summary.total_income || 0);
+  const netCashFlow = Number(summary.net_cash_flow || 0);
   const txCount = Number(summary.transaction_count || 0);
+  const hasTransactions = expenses.length > 0 || incomes.length > 0;
 
   const byCat = {};
   expenses.forEach(e => {
@@ -186,68 +211,90 @@ function DailyReportView({ data, date }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm col-span-2 md:col-span-1">
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Spent</p>
-          <strong className="text-2xl text-rose-600">{formatCurrency(totalExpenses)}</strong>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Income</p>
+          <strong className="text-xl text-emerald-600">{formatCurrency(totalIncome)}</strong>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Transactions</p>
-          <strong className="text-2xl text-slate-900">{txCount}</strong>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Expenses</p>
+          <strong className="text-xl text-rose-600">{formatCurrency(totalExpenses)}</strong>
+        </div>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Net Cash Flow</p>
+          <strong className={`text-xl ${netCashFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {formatCurrency(netCashFlow)}
+          </strong>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Date</p>
           <strong className="text-base text-slate-900">{date}</strong>
+          <span className="text-[10px] text-slate-400 block mt-0.5">{txCount} expense(s)</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* By Category */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Spending by Category</h2>
-          {Object.entries(byCat).length === 0 ? (
-            <p className="text-sm text-slate-400 italic">No expenses recorded for this day.</p>
-          ) : (
-            Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
-              const maxAmt = Math.max(...Object.values(byCat));
-              const pct = maxAmt > 0 ? (amt / maxAmt) * 100 : 0;
-              return (
-                <div key={cat} className="mb-3">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="font-bold text-slate-700">{cat}</span>
-                    <span className="font-bold text-slate-900">{formatCurrency(amt)}</span>
-                  </div>
-                  <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-finman-blue rounded-full transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })
-          )}
+      {!hasTransactions ? (
+        <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center shadow-sm">
+          <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-800 mb-1">No Transactions Recorded</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            No transactions were recorded for {date}. Add an income or expense to see your daily financial report.
+          </p>
         </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* By Category */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <h2 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Spending by Category</h2>
+            {Object.entries(byCat).length === 0 ? (
+              <p className="text-sm text-slate-400 italic">No expenses recorded for this day.</p>
+            ) : (
+              Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
+                const maxAmt = Math.max(...Object.values(byCat));
+                const pct = maxAmt > 0 ? (amt / maxAmt) * 100 : 0;
+                return (
+                  <div key={cat} className="mb-3">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-bold text-slate-700">{cat}</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(amt)}</span>
+                    </div>
+                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-finman-blue rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
 
-        {/* Transactions */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider flex items-center gap-2">
-            <FileText className="w-4 h-4 text-finman-blue" /> Transactions
-          </h2>
-          {expenses.length === 0 ? (
-            <p className="text-sm text-slate-400 italic">No transactions for this day.</p>
-          ) : (
+          {/* Transactions */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <h2 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider flex items-center gap-2">
+              <FileText className="w-4 h-4 text-finman-blue" /> Transactions
+            </h2>
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {incomes.map(inc => (
+                <div key={`inc-${inc.income_id}`} className="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
+                  <div>
+                    <p className="text-sm font-bold text-emerald-800">{inc.source}</p>
+                    <p className="text-xs text-slate-500">{inc.description || 'Income'}</p>
+                  </div>
+                  <span className="font-black text-emerald-600 text-sm">+{formatCurrency(inc.amount)}</span>
+                </div>
+              ))}
               {expenses.map(e => (
-                <div key={e.expense_id} className="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
+                <div key={`exp-${e.expense_id}`} className="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
                   <div>
                     <p className="text-sm font-bold text-slate-800">{e.category_name}</p>
                     <p className="text-xs text-slate-500">{e.description || e.payment_mode || 'Manual'}</p>
                   </div>
-                  <span className="font-black text-rose-600 text-sm">{formatCurrency(e.amount)}</span>
+                  <span className="font-black text-rose-600 text-sm">-{formatCurrency(e.amount)}</span>
                 </div>
               ))}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

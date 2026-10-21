@@ -5,3 +5,6 @@ pydantic>=2,<3
 python-multipart>=0.0.9,<1
 pillow>=10,<12
 pytesseract>=0.3,<1
+opencv-python-headless>=4.10,<5
+pypdf>=5,<7
+pypdfium2>=4.30,<5

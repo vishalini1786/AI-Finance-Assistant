@@ -16,15 +16,17 @@ async function getProfile(userId) {
 
 async function updateProfile(userId, updates) {
   // Map camelCase from the API body to the snake_case DB columns.
-  const fields = {
-    name:                  updates.name,
-    phone:                 updates.phone,
-    occupation:            updates.occupation,
-    preferred_language:    updates.preferredLanguage,
-    monthly_income:        updates.monthlyIncome,
-    profile_picture:       updates.profilePicture,
-    theme_preference:      updates.themePreference,
-  };
+  const fields = {};
+  if (updates.name !== undefined) fields.name = updates.name;
+  if (updates.phone !== undefined) fields.phone = updates.phone;
+  if (updates.occupation !== undefined) fields.occupation = updates.occupation;
+  if (updates.preferredLanguage !== undefined) fields.preferred_language = updates.preferredLanguage;
+  if (updates.monthlyIncome !== undefined) fields.monthly_income = updates.monthlyIncome;
+  if (updates.profilePicture !== undefined) fields.profile_picture = updates.profilePicture;
+  if (updates.themePreference !== undefined) fields.theme_preference = updates.themePreference;
+  if (updates.expenseReminderEnabled !== undefined) fields.expense_reminder_enabled = updates.expenseReminderEnabled;
+  if (updates.expenseReminderTime !== undefined) fields.expense_reminder_time = updates.expenseReminderTime;
+  if (updates.microExpensePromptsEnabled !== undefined) fields.micro_expense_prompts_enabled = updates.microExpensePromptsEnabled;
 
   const updatedUser = await userRepository.updateProfile(userId, fields);
   if (!updatedUser) {
@@ -53,23 +55,29 @@ async function completeOnboarding(userId, onboardingData) {
     aiPreferences,
     savingsHabit,
     investmentPreference,
+    expenseReminderEnabled,
+    expenseReminderTime,
+    microExpensePromptsEnabled,
   } = onboardingData;
 
   // Validate JSONB array fields to ensure they are arrays before inserting
   const safeArray = (val) => (Array.isArray(val) ? val : []);
 
   const fields = {
-    occupation:             occupation          || null,
-    monthly_income:         monthlyIncome       != null ? Number(monthlyIncome) : null,
-    preferred_language:     preferredLanguage   || 'en',
-    financial_interests:    JSON.stringify(safeArray(financialInterests)),
-    spending_categories:    JSON.stringify(safeArray(spendingCategories)),
-    financial_goals:        JSON.stringify(safeArray(financialGoals)),
-    financial_experience:   financialExperience || null,
-    ai_preferences:         JSON.stringify(safeArray(aiPreferences)),
-    savings_habit:          savingsHabit        || null,
-    investment_preference:  investmentPreference || null,
-    is_onboarded:           true,
+    occupation:                   occupation          || null,
+    monthly_income:               monthlyIncome       != null ? Number(monthlyIncome) : null,
+    preferred_language:           preferredLanguage   || 'en',
+    financial_interests:          JSON.stringify(safeArray(financialInterests)),
+    spending_categories:          JSON.stringify(safeArray(spendingCategories)),
+    financial_goals:              JSON.stringify(safeArray(financialGoals)),
+    financial_experience:         financialExperience || null,
+    ai_preferences:               JSON.stringify(safeArray(aiPreferences)),
+    savings_habit:                savingsHabit        || null,
+    investment_preference:        investmentPreference || null,
+    expense_reminder_enabled:     expenseReminderEnabled !== undefined ? Boolean(expenseReminderEnabled) : true,
+    expense_reminder_time:        expenseReminderTime || '21:00',
+    micro_expense_prompts_enabled: microExpensePromptsEnabled !== undefined ? Boolean(microExpensePromptsEnabled) : true,
+    is_onboarded:                 true,
   };
 
   const updatedUser = await userRepository.updateProfile(userId, fields);

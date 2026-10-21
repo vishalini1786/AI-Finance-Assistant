@@ -4,9 +4,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 // Context Providers
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
 
 // Protected Route Guard
 import { ProtectedRoute } from './components/common/ProtectedRoute';
+import { AdminProtectedRoute } from './components/common/AdminProtectedRoute';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // Public Marketing Website Pages
 import { Home } from './pages/public/Home';
@@ -20,12 +23,15 @@ import { ContactPage } from './pages/public/Contact';
 // Authentication Pages
 import { LoginPage } from './pages/auth/Login';
 import { RegisterPage } from './pages/auth/Register';
+import { ForgotPassword } from './pages/auth/ForgotPassword';
+import { ResetPassword } from './pages/auth/ResetPassword';
 
 // User Onboarding Flow
 import { Onboarding } from './pages/onboarding/Onboarding';
 
 // Existing 6 Authenticated Core Pages (Paths Preserved)
 import { Dashboard } from './pages/Dashboard';
+import { Income } from './pages/Income';
 import { Expenses } from './pages/Expenses';
 import { Budget } from './pages/Budget';
 import { FinancialHealth } from './pages/FinancialHealth';
@@ -38,11 +44,23 @@ import { Reports } from './pages/Reports';
 import { SavingsGoals } from './pages/SavingsGoals';
 import { Investments } from './pages/Investments';
 
+// Admin Dashboard Pages
+import { AdminOverview }        from './pages/admin/AdminOverview';
+import { AdminUserManagement }  from './pages/admin/AdminUserManagement';
+import { AdminSystemHealth }    from './pages/admin/AdminSystemHealth';
+import { AdminDocuments }       from './pages/admin/AdminDocuments';
+import { AdminAiMonitoring }    from './pages/admin/AdminAiMonitoring';
+import { AdminAuditLogs }       from './pages/admin/AdminAuditLogs';
+import { AdminCategories }      from './pages/admin/AdminCategories';
+import { AdminProfile }         from './pages/admin/AdminProfile';
+
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <BrowserRouter>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <LanguageProvider>
+            <BrowserRouter>
           <Routes>
             {/* 1. Public Marketing Website */}
             <Route path="/" element={<Home />} />
@@ -56,13 +74,16 @@ function App() {
             {/* 2. Authentication */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* 3. User Onboarding Flow */}
             <Route path="/onboarding" element={<Onboarding />} />
 
-            {/* 4. Protected Core Application (6 Authenticated Pages) */}
+            {/* 4. Protected Core Application */}
             <Route element={<ProtectedRoute />}>
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/income" element={<Income />} />
               <Route path="/expenses" element={<Expenses />} />
               <Route path="/budget" element={<Budget />} />
               <Route path="/health" element={<FinancialHealth />} />
@@ -76,12 +97,26 @@ function App() {
               <Route path="/investments" element={<Investments />} />
             </Route>
 
-            {/* Fallback */}
+            {/* 5. Admin Dashboard (role = admin required) */}
+            <Route element={<AdminProtectedRoute />}>
+              <Route path="/admin"             element={<AdminOverview />} />
+              <Route path="/admin/users"        element={<AdminUserManagement />} />
+              <Route path="/admin/health"       element={<AdminSystemHealth />} />
+              <Route path="/admin/documents"    element={<AdminDocuments />} />
+              <Route path="/admin/ai"           element={<AdminAiMonitoring />} />
+              <Route path="/admin/audit-logs"   element={<AdminAuditLogs />} />
+              <Route path="/admin/categories"   element={<AdminCategories />} />
+              <Route path="/admin/profile"      element={<AdminProfile />} />
+            </Route>
+
+            {/* Fallback (must be last) */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </ThemeProvider>
+            </BrowserRouter>
+          </LanguageProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

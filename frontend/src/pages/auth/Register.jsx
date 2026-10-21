@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../../components/auth/AuthLayout';
-import { GoogleLoginButton } from '../../components/auth/GoogleLoginButton';
 import { User, Mail, Lock, Eye, EyeOff, Phone, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -291,14 +290,7 @@ export const RegisterPage = () => {
         </button>
       </form>
 
-      <div className="relative my-5 text-center">
-        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-800"></div></div>
-        <span className="relative bg-white dark:bg-slate-900 px-3 text-[10px] font-bold text-slate-400 uppercase">OR</span>
-      </div>
-
-      <GoogleLoginButton />
-
-      <div className="flex flex-col items-center gap-2 mt-5 text-xs text-slate-500 dark:text-slate-400">
+      <div className="flex flex-col items-center gap-2 mt-6 text-xs text-slate-500 dark:text-slate-400">
         <p>
           Already have an account?{' '}
           <Link to="/login" className="font-extrabold text-sky-500 hover:underline">

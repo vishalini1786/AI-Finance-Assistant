@@ -6,9 +6,9 @@ const db = require('../config/database');
 
 async function findAllByUser(userId) {
   const result = await db.query(
-    `SELECT e.expense_id, e.user_id, e.category_id, e.amount, TO_CHAR(e.expense_date, 'YYYY-MM-DD') AS expense_date, e.merchant_name, e.payment_mode, e.description, e.source_type, e.document_transaction_id, e.recurring_payment_id, e.created_at, e.updated_at, c.name AS category_name
+    `SELECT e.expense_id, e.user_id, e.category_id, e.amount, TO_CHAR(e.expense_date, 'YYYY-MM-DD') AS expense_date, e.merchant_name, e.payment_mode, e.description, e.source_type, e.document_transaction_id, e.recurring_payment_id, e.created_at, e.updated_at, COALESCE(c.name, 'Other') AS category_name
      FROM expenses e
-     JOIN categories c ON c.category_id = e.category_id
+     LEFT JOIN categories c ON c.category_id = e.category_id
      WHERE e.user_id = $1
      ORDER BY e.expense_date DESC, e.expense_id DESC`,
     [userId]
@@ -18,9 +18,9 @@ async function findAllByUser(userId) {
 
 async function findByIdAndUser(expenseId, userId) {
   const result = await db.query(
-    `SELECT e.expense_id, e.user_id, e.category_id, e.amount, TO_CHAR(e.expense_date, 'YYYY-MM-DD') AS expense_date, e.merchant_name, e.payment_mode, e.description, e.source_type, e.document_transaction_id, e.recurring_payment_id, e.created_at, e.updated_at, c.name AS category_name
+    `SELECT e.expense_id, e.user_id, e.category_id, e.amount, TO_CHAR(e.expense_date, 'YYYY-MM-DD') AS expense_date, e.merchant_name, e.payment_mode, e.description, e.source_type, e.document_transaction_id, e.recurring_payment_id, e.created_at, e.updated_at, COALESCE(c.name, 'Other') AS category_name
      FROM expenses e
-     JOIN categories c ON c.category_id = e.category_id
+     LEFT JOIN categories c ON c.category_id = e.category_id
      WHERE e.expense_id = $1 AND e.user_id = $2`,
     [expenseId, userId]
   );
@@ -108,9 +108,9 @@ async function findByDate(userId, date) {
     `SELECT e.expense_id, e.user_id, e.category_id, e.amount,
             TO_CHAR(e.expense_date, 'YYYY-MM-DD') AS expense_date,
             e.merchant_name, e.payment_mode, e.description, e.source_type,
-            c.name AS category_name
+            COALESCE(c.name, 'Other') AS category_name
      FROM expenses e
-     JOIN categories c ON c.category_id = e.category_id
+     LEFT JOIN categories c ON c.category_id = e.category_id
      WHERE e.user_id = $1 AND e.expense_date = $2::date
      ORDER BY e.created_at DESC`,
     [userId, date]
@@ -118,26 +118,49 @@ async function findByDate(userId, date) {
   return result.rows;
 }
 
-// Daily summary totals by category for a specific date
+// Daily summary totals by category and income for a specific date
 async function getDailySummary(userId, date) {
-  const result = await db.query(
+  const totalsResult = await db.query(
     `SELECT
-        COALESCE(SUM(e.amount), 0) AS total_expenses,
-        COUNT(e.expense_id) AS transaction_count,
-        json_agg(json_build_object(
-          'category_name', c.name,
-          'total', SUM(e.amount)
-        ) ORDER BY SUM(e.amount) DESC) AS by_category
+        COALESCE(SUM(amount), 0) AS total_expenses,
+        COUNT(expense_id)::int AS transaction_count
+     FROM expenses
+     WHERE user_id = $1 AND expense_date = $2::date`,
+    [userId, date]
+  );
+
+  const catResult = await db.query(
+    `SELECT
+        c.name AS category_name,
+        COALESCE(SUM(e.amount), 0) AS total
      FROM expenses e
      JOIN categories c ON c.category_id = e.category_id
      WHERE e.user_id = $1 AND e.expense_date = $2::date
-     GROUP BY e.user_id`,
+     GROUP BY c.name
+     ORDER BY total DESC`,
     [userId, date]
   );
-  if (result.rows.length === 0) {
-    return { total_expenses: 0, transaction_count: 0, by_category: [] };
-  }
-  return result.rows[0];
+
+  const incomeResult = await db.query(
+    `SELECT
+        COALESCE(SUM(amount), 0) AS total_income,
+        COUNT(income_id)::int AS income_count
+     FROM incomes
+     WHERE user_id = $1 AND income_date = $2::date`,
+    [userId, date]
+  );
+
+  const totalExpenses = Number(totalsResult.rows[0]?.total_expenses || 0);
+  const totalIncome = Number(incomeResult.rows[0]?.total_income || 0);
+
+  return {
+    total_expenses: totalExpenses,
+    total_income: totalIncome,
+    net_cash_flow: totalIncome - totalExpenses,
+    transaction_count: Number(totalsResult.rows[0]?.transaction_count || 0),
+    income_count: Number(incomeResult.rows[0]?.income_count || 0),
+    by_category: catResult.rows.map(r => ({ category_name: r.category_name, total: Number(r.total) })),
+  };
 }
 
 // Frequent expense descriptions/categories for quick-add suggestions

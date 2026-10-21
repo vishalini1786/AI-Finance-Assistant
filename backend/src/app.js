@@ -21,6 +21,7 @@ const calendarRoutes = require('./routes/calendarRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const adminRoutes  = require('./routes/adminRoutes');
 
 const { notFoundHandler, errorHandler } = require('./middleware/errorMiddleware');
 
@@ -59,6 +60,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/admin',   adminRoutes);
 
 // ---- 404 + centralized error handling (must be last) ----
 app.use(notFoundHandler);

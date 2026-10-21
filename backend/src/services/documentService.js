@@ -32,15 +32,72 @@ function keywordCategoryFromText(text) {
 }
 
 async function requestOcr(file) {
-  if (!env.aiServiceUrl) return { status: 'UNAVAILABLE', message: 'OCR service is not configured' };
+  if (!env.aiServiceUrl) {
+    return {
+      status: 'UNAVAILABLE',
+      statusCode: 503,
+      message: 'OCR service is not configured. Set AI_SERVICE_URL in the backend environment and restart the API.',
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
   try {
+    const fileContent = await fs.promises.readFile(file.path);
     const body = new FormData();
-    body.append('file', new Blob([fs.readFileSync(file.path)], { type: file.mimetype }), file.originalname);
-    const response = await fetch(`${env.aiServiceUrl}/ocr/receipt`, { method: 'POST', body });
-    if (!response.ok) return { status: 'UNAVAILABLE', message: 'OCR service returned an error' };
-    return { status: 'COMPLETED', ...(await response.json()) };
+    body.append('file', new Blob([fileContent], { type: file.mimetype }), file.originalname);
+    const response = await fetch(`${env.aiServiceUrl}/ocr/receipt`, {
+      method: 'POST',
+      body,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      let detailMsg = 'OCR could not process this document. Please enter the values manually or try another file.';
+      try {
+        const errJson = await response.json();
+        if (typeof errJson?.detail === 'string' && errJson.detail.trim()) {
+          detailMsg = errJson.detail.trim().slice(0, 500);
+        }
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) {
+          throw error;
+        }
+      }
+      return { status: 'UNAVAILABLE', statusCode: response.status, message: detailMsg };
+    }
+
+    const extraction = await response.json();
+    if (!extraction.raw_text || !extraction.raw_text.trim()) {
+      return {
+        status: 'UNAVAILABLE',
+        statusCode: 422,
+        message: 'No readable text was found. Try a clearer image or enter the values manually.',
+      };
+    }
+    return { status: 'COMPLETED', ...extraction };
   } catch (error) {
-    return { status: 'UNAVAILABLE', message: 'OCR service is temporarily unavailable' };
+    if (error.name === 'AbortError') {
+      return {
+        status: 'UNAVAILABLE',
+        statusCode: 504,
+        message: 'OCR request timed out. Please enter details manually or try again.',
+      };
+    }
+    if (error.code === 'ENOENT' || error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      return {
+        status: 'UNAVAILABLE',
+        statusCode: 503,
+        message: 'OCR service is unavailable. Check that the configured OCR service is running.',
+      };
+    }
+    return {
+      status: 'UNAVAILABLE',
+      statusCode: 503,
+      message: 'OCR service is temporarily unavailable. Please enter the values manually or try again.',
+    };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -53,17 +110,24 @@ async function processReceipt(userId, file) {
       filePath: file.path,
       documentType: 'RECEIPT',
     });
-    console.log('[OCR] Database document created:', document.document_id);
+    console.info('[OCR] Document upload accepted for processing.');
 
     const extraction = await requestOcr(file);
-    console.log('[OCR] Extraction completed:', extraction.status);
+    console.info('[OCR] Extraction status:', extraction.status);
     
     if (extraction.status !== 'COMPLETED') {
       await documentRepository.updateStatus(document.document_id, userId, 'FAILED');
+      // Clean up temporary file on failure
+      if (file?.path && fs.existsSync(file.path)) {
+        try { fs.unlinkSync(file.path); } catch (e) {}
+      }
       return { document, status: extraction.status, message: extraction.message };
     }
-    
-    console.log('[OCR] Extracted amount:', extraction.amount, 'date:', extraction.date, 'merchant:', extraction.merchant);
+
+    const documentType = ['RECEIPT', 'SALARY_SLIP'].includes(extraction.documentType)
+      ? extraction.documentType
+      : 'OTHER';
+    await documentRepository.updateDocumentType(document.document_id, userId, documentType);
     
     const transaction = await documentRepository.createTransaction({
       documentId: document.document_id,
@@ -73,8 +137,6 @@ async function processReceipt(userId, file) {
       rawText: extraction.raw_text,
       confidence: extraction.confidence,
     });
-    console.log('[OCR] Document transaction inserted');
-
     let suggestedCategory = null;
     if (env.aiServiceUrl) {
       try {
@@ -110,38 +172,29 @@ async function processReceipt(userId, file) {
         if (catResponse.ok) {
           const catData = await catResponse.json();
           suggestedCategory = catData.category;
-          console.log('[OCR] ML classification response:', suggestedCategory);
         } else {
-          console.log('[OCR] ML classification response error status:', catResponse.status);
+          console.warn('[OCR] Category classification service returned status:', catResponse.status);
         }
       } catch (e) {
-        console.log('[OCR] ML classification fetch failed:', e.message);
+        console.warn('[OCR] Category classification is unavailable:', e.name);
       }
     }
 
     // HYBRID: If ML didn't produce a result, use keyword text analytics
     if (!suggestedCategory && extraction.raw_text) {
       suggestedCategory = keywordCategoryFromText(extraction.raw_text);
-      if (suggestedCategory) {
-        console.log('[OCR] Keyword text analytics suggested category:', suggestedCategory);
-      }
     }
-
-    // Also use suggested_category from the Python OCR service if available
-    if (!suggestedCategory && extraction.suggested_category) {
-      suggestedCategory = extraction.suggested_category;
-    }
+    suggestedCategory = suggestedCategory || extraction.suggestedCategory || extraction.suggested_category || null;
 
     await documentRepository.updateStatus(document.document_id, userId, 'PROCESSED');
     return { document, transaction, extraction: { ...extraction, suggestedCategory }, status: 'AWAITING_CONFIRMATION' };
   } catch (error) {
-    console.error('[OCR] Exception occurred:', error.message);
-    console.error(error.stack);
-    if (error.code) console.error('[OCR] PG Error Code:', error.code);
-    if (error.detail) console.error('[OCR] PG Detail:', error.detail);
-    if (error.constraint) console.error('[OCR] PG Constraint:', error.constraint);
+    if (file?.path && fs.existsSync(file.path)) {
+      try { fs.unlinkSync(file.path); } catch (e) {}
+    }
+    console.error('[OCR] Document processing failed:', error.code || error.name || 'UnknownError');
     throw error;
   }
 }
 
-module.exports = { processReceipt };
+module.exports = { processReceipt, requestOcr };

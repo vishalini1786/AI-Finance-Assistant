@@ -5,9 +5,10 @@
 const db = require('../config/database');
 
 async function findByEmail(email) {
+  if (!email) return null;
   const result = await db.query(
-    'SELECT * FROM users WHERE email = $1',
-    [email]
+    'SELECT * FROM users WHERE LOWER(email) = LOWER($1)',
+    [email.trim()]
   );
   return result.rows[0] || null;
 }
@@ -41,6 +42,9 @@ async function updateProfile(userId, fields) {
     'monthly_income',
     'profile_picture',
     'theme_preference',
+    'expense_reminder_enabled',
+    'expense_reminder_time',
+    'micro_expense_prompts_enabled',
     'financial_interests',
     'spending_categories',
     'financial_goals',
@@ -84,3 +88,6 @@ async function updateProfile(userId, fields) {
 }
 
 module.exports = { findByEmail, findById, createUser, updateProfile };
+// NOTE: findById returns the full row including the `role` column,
+// which is required by adminMiddleware to verify admin access.
+

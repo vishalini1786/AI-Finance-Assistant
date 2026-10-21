@@ -6,10 +6,12 @@
 const env = require('./config/env');
 const app = require('./app');
 const logger = require('./utils/logger');
+const { startReminderScheduler } = require('./services/reminderScheduler');
 
 const server = app.listen(env.port, () => {
   logger.info(`FinMan backend running on http://localhost:${env.port}`);
   logger.info(`Environment: ${env.nodeEnv}`);
+  startReminderScheduler();
 });
 
 // Gracefully handle unexpected crashes instead of dying silently.

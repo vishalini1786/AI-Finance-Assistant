@@ -44,15 +44,20 @@ const deleteExpense = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Expense deleted successfully', data: {} });
 });
 
-// Daily report: get expenses for a specific date
+const incomeRepository = require('../repositories/incomeRepository');
+
+// Daily report: get expenses and incomes for a specific date
 const getDailyReport = asyncHandler(async (req, res) => {
   const { date } = req.query;
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return sendError(res, { statusCode: 400, message: 'A valid date (YYYY-MM-DD) is required' });
   }
-  const expenses = await expenseRepository.findByDate(req.userId, date);
-  const summary = await expenseRepository.getDailySummary(req.userId, date);
-  return sendSuccess(res, { message: 'Daily report fetched', data: { date, expenses, summary } });
+  const [expenses, incomes, summary] = await Promise.all([
+    expenseRepository.findByDate(req.userId, date),
+    incomeRepository.findByDate(req.userId, date),
+    expenseRepository.getDailySummary(req.userId, date),
+  ]);
+  return sendSuccess(res, { message: 'Daily report fetched', data: { date, expenses, incomes, summary } });
 });
 
 // Quick expense: get frequent expenses for suggestions

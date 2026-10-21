@@ -10,6 +10,9 @@ const { validateRegister, validateLogin } = require('../validators/authValidator
 
 router.post('/register', validate(validateRegister), authController.register);
 router.post('/login', validate(validateLogin), authController.login);
+router.post('/google', authController.googleLogin);
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
 router.get('/me', authMiddleware, authController.getMe);
 
 module.exports = router;

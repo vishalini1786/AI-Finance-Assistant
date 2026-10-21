@@ -15,13 +15,13 @@ router.get('/summary', projectController.getProjectSummary);
 router.get('/', projectController.getProjects);
 router.post('/', validate(validateProject), projectController.createProject);
 
-router.get('/:projectId', projectController.getProject);
-router.put('/:projectId', validate(validateProject), projectController.updateProject);
-router.delete('/:projectId', projectController.deleteProject);
-
 router.get('/:projectId/expenses', projectController.getProjectExpenses);
 router.post('/:projectId/expenses', validate(validateProjectExpense), projectController.createProjectExpense);
 router.put('/:projectId/expenses/:expenseId', validate(validateProjectExpense), projectController.updateProjectExpense);
 router.delete('/:projectId/expenses/:expenseId', projectController.deleteProjectExpense);
+
+router.get('/:projectId', projectController.getProject);
+router.put('/:projectId', validate(validateProject), projectController.updateProject);
+router.delete('/:projectId', projectController.deleteProject);
 
 module.exports = router;

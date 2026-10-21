@@ -31,6 +31,18 @@ try:
     from PIL import Image, ImageFilter, ImageEnhance, ImageOps
     import cv2
     OCR_AVAILABLE = True
+    backend_root = Path(__file__).resolve().parent
+    local_bin = backend_root / "tesseract-bin" / "tesseract.exe"
+    local_tessdata = backend_root / "tesseract-bin" / "tessdata"
+    env_cmd = os.environ.get("TESSERACT_CMD")
+    if env_cmd and Path(env_cmd).is_file():
+        pytesseract.pytesseract.tesseract_cmd = env_cmd
+    elif local_bin.is_file():
+        pytesseract.pytesseract.tesseract_cmd = str(local_bin)
+        if "TESSDATA_PREFIX" not in os.environ and local_tessdata.is_dir():
+            os.environ["TESSDATA_PREFIX"] = str(local_tessdata)
+    elif os.path.isfile(r"C:\Program Files\Tesseract-OCR\tesseract.exe"):
+        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 except ImportError:
     OCR_AVAILABLE = False
     logging.warning("pytesseract/Pillow/cv2 not installed. OCR will be unavailable.")

@@ -103,6 +103,13 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
   };
 
+  const googleLogin = async ({ credential, demoEmail, demoName }) => {
+    const user = await authService.googleLogin({ credential, demoEmail, demoName });
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    return user;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -111,6 +118,7 @@ export const AuthProvider = ({ children }) => {
         isLoading,
         login,
         register,
+        googleLogin,
         completeOnboarding,
         refreshCurrentUser,
         updateProfile,

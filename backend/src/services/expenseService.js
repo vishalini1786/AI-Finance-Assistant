@@ -34,8 +34,21 @@ async function getExpenseById(expenseId, userId) {
   return expense;
 }
 
+const db = require('../config/database');
+
 async function createExpense(userId, payload) {
   await assertCategoryExists(payload.categoryId);
+
+  if (payload.documentTransactionId) {
+    const existing = await db.query(
+      'SELECT expense_id FROM expenses WHERE user_id = $1 AND document_transaction_id = $2',
+      [userId, payload.documentTransactionId]
+    );
+    if (existing.rows.length > 0) {
+      throw badRequestError('An expense record has already been recorded for this scanned document.');
+    }
+  }
+
   return expenseRepository.create({ userId, ...payload });
 }
 
