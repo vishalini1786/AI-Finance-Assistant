@@ -21,7 +21,7 @@ const calendarRoutes = require('./routes/calendarRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const reportRoutes = require('./routes/reportRoutes');
-const adminRoutes  = require('./routes/adminRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const { notFoundHandler, errorHandler } = require('./middleware/errorMiddleware');
 
@@ -40,9 +40,30 @@ app.use(express.urlencoded({ extended: true }));
 
 // Simple health check - useful for confirming the server is up
 // before wiring up the frontend.
-app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'FinMan API is running', data: {} });
+
+const db = require('./config/database');
+
+// Check both the backend and PostgreSQL database.
+app.get('/api/health', async (req, res) => {
+  try {
+    await db.query('SELECT 1 AS health_check');
+
+    res.status(200).json({
+      success: true,
+      message: 'FinMan API and database are connected',
+      database: 'connected'
+    });
+  } catch (error) {
+    console.error('Database health check failed:', error.message);
+
+    res.status(503).json({
+      success: false,
+      message: 'FinMan API is running, but the database is unavailable',
+      database: 'disconnected'
+    });
+  }
 });
+
 
 // ---- Phase 1 routes ----
 app.use('/api/auth', authRoutes);
@@ -60,7 +81,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/admin',   adminRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ---- 404 + centralized error handling (must be last) ----
 app.use(notFoundHandler);
