@@ -45,12 +45,31 @@ const developmentOrigins = process.env.NODE_ENV === 'production'
   : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173'];
 const allowedOrigins = new Set([...configuredOrigins, ...developmentOrigins]);
 
+function isOriginAllowed(origin) {
+  if (!origin || allowedOrigins.has(origin)) {
+    return true;
+  }
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host.endsWith('.vercel.app') ||
+      host.endsWith('.netlify.app') ||
+      host.endsWith('.onrender.com')
+    ) {
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
 // Browser auth uses a Bearer token, not cookies, so credentialed CORS is not
-// needed. Production origins come only from FRONTEND_URL; local origins are
-// available only outside production. The cors middleware answers preflight.
+// needed. Production origins come only from FRONTEND_URL and trusted deploy domains.
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) {
+    if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
     return callback(null, false);
