@@ -22,10 +22,12 @@ const pool = new Pool({
   password: env.db.password,
   ssl: sslConfig,
 
-  // Reasonable defaults for a small student project.
-  max: 10, // max simultaneous clients in the pool
+  // Reasonable defaults for a small student project / Supabase pooler.
+  max: process.env.DB_MAX_CONNECTIONS ? parseInt(process.env.DB_MAX_CONNECTIONS, 10) : 5,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 20000,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
 });
 
 pool.on('error', (err) => {

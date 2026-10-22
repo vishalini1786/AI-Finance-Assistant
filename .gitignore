@@ -1,52 +1,73 @@
+# ==========================================
 # Dependencies
-node_modules
+# ==========================================
+node_modules/
+*/node_modules/
 .pnp
 .pnp.js
 
-# Production build
-dist
-dist-ssr
+# ==========================================
+# Production Builds & Output
+# ==========================================
+dist/
+dist-ssr/
+build/
+out/
 *.local
+.tsbuildinfo
+
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
 .env
 .env.*
 *.env
-backend/.env
+!.env.example
+!**/.env.example
 
-# Logs
+# ==========================================
+# Python Runtime & Virtual Environments
+# ==========================================
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+
+# ==========================================
+# Logs & Diagnostic Files
+# ==========================================
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Editor directories
+# ==========================================
+# Runtime Uploads & Binaries
+# ==========================================
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/tesseract-bin/
+
+# ==========================================
+# IDE & Operating System Files
+# ==========================================
 .vscode/*
 !.vscode/extensions.json
-.idea
+!.vscode/settings.json
+.idea/
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-
-# Python runtime artifacts
-__pycache__/
-*.py[cod]
-
-# Runtime uploads; keep the directory placeholder tracked
-backend/uploads/*
-!backend/uploads/.gitkeep
-
-# Local Python environment
-.venv/
-
-# Local Tesseract Windows installation
-backend/tesseract-bin/
-
-# Local environment and secrets
-.env
-.env.*
-*.env
-!.env.example
-!**/.env.example
