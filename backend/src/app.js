@@ -83,7 +83,50 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Health check verifies both the API process and PostgreSQL.
+const path = require('path');
+const fs = require('fs');
 const db = require('./config/database');
+
+const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+const hasFrontendDist = fs.existsSync(frontendDist) && fs.existsSync(path.join(frontendDist, 'index.html'));
+
+if (hasFrontendDist) {
+  app.use(express.static(frontendDist));
+}
+
+// API Root Index info
+const apiIndexHandler = (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'AI Finance Assistant API (FinMan) is live and operational',
+    version: '1.0.0',
+    status: 'online',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      users: '/api/users',
+      categories: '/api/categories',
+      income: '/api/income',
+      expenses: '/api/expenses',
+      budgets: '/api/budgets',
+      monthlyPlans: '/api/monthly-plans',
+      dashboard: '/api/dashboard',
+      projects: '/api/projects',
+      goals: '/api/goals',
+      holdings: '/api/holdings',
+      calendar: '/api/calendar',
+      documents: '/api/documents',
+      notifications: '/api/notifications',
+      reports: '/api/reports',
+      admin: '/api/admin',
+    },
+  });
+};
+
+app.get('/api', apiIndexHandler);
+if (!hasFrontendDist) {
+  app.get('/', apiIndexHandler);
+}
 
 app.get('/api/health', async (req, res) => {
   try {
@@ -122,6 +165,16 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Client-side single page app fallback (if frontend is built locally or packaged)
+if (hasFrontendDist) {
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    return res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // ---- 404 + centralized error handling (must be last) ----
 app.use(notFoundHandler);
