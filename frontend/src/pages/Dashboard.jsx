@@ -17,6 +17,7 @@ import {
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { SummaryCard } from '../components/common/SummaryCard';
+import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 import dashboardService from '../services/dashboardService';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -196,6 +197,14 @@ export const Dashboard = () => {
               ) : (
                 <SummaryCard title="Predicted Expense" amount={summary.predictedExpense || 0} indicator="ML Random Forest" icon={Sparkles} type="orange" />
               )}
+          </div>
+
+          <div className="mb-8">
+            <PersonalizedInsights
+              pageContext="DASHBOARD"
+              title="Personalized AI Financial Insights & Recommendations"
+              subtitle="Grounded in your onboarding profile, budget limits, and actual transaction records"
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">

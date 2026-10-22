@@ -6,6 +6,7 @@ const goalService = require('./goalService');
 const holdingService = require('./holdingService');
 const incomeService = require('./incomeService');
 const expenseService = require('./expenseService');
+const financialProfileService = require('./financialProfileService');
 
 const budgetRepository = require('../repositories/budgetRepository');
 const goalRepository = require('../repositories/goalRepository');
@@ -760,6 +761,7 @@ async function getUserFullContext(userId) {
     recurringRes,
     taxesRes,
     largestExpenseRes,
+    financialProfile,
   ] = await Promise.all([
     userService.getProfile(userId).catch(() => ({})),
     dashboardService.getSummary(userId).catch(() => ({})),
@@ -784,6 +786,7 @@ async function getUserFullContext(userId) {
        LIMIT 1`,
       [userId, currentMonth, currentYear]
     ).catch(() => ({ rows: [] })),
+    financialProfileService.buildFinancialProfile(userId).catch(() => null),
   ]);
 
   // Current month active budgets
@@ -937,7 +940,11 @@ async function getUserFullContext(userId) {
       prevCatMap,
       currentMonthName: now.toLocaleString('en-IN', { month: 'long' }),
       prevMonthName: new Date(prevYear, prevMonth - 1, 1).toLocaleString('en-IN', { month: 'long' }),
+      lastMonthName: new Date(prevYear, prevMonth - 1, 1).toLocaleString('en-IN', { month: 'long' }),
+      prevMonthTotalExpenses: Number(prevExpenseRes?.rows?.[0]?.total || 0),
+      prevMonthTotalIncome: Number(prevIncomeRes?.rows?.[0]?.total_income || 0),
     },
+    financialProfile,
   };
 }
 
@@ -1551,13 +1558,16 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
   const usesBro = /\b(bro|bhai|buddy)\b/i.test(lower);
   const usesDa = /\b(da|machi|nanba)\b/i.test(lower);
 
+  // Check if message mentions specific financial workflows (must not be swallowed by generic greetings/help)
+  const hasSpecificFinancialIntent = /\b(?:budget|budgets|spend|spent|spending|expense|expenses|reduce|cut|trim|lower|save|savings|goal|goals|income|salary|project|projects|loan|loans|debt|invest|investment|tax|taxes|bill|bills|afford|last\s+month|previous\s+month)\b/i.test(lower);
+
   // -----------------------------------------------------------------
   // 2. HELP & CAPABILITY DISCOVERY
   // -----------------------------------------------------------------
-  const isGenericHelp = (
-    /\b(can you help me|how can you help|what can you do|need help)\b/i.test(lower) ||
+  const isGenericHelp = !hasSpecificFinancialIntent && (
+    /^(?:can\s+you\s+help\s+me|how\s+can\s+you\s+help|what\s+can\s+you\s+do|need\s+help|help\s+me|help)[?!.]*$/i.test(lower) ||
     lower === 'help' ||
-    (lower.startsWith('help me') && !lower.includes('invest') && !lower.includes('gold') && !lower.includes('plan') && !lower.includes('budget') && !lower.includes('save') && !lower.includes('project') && !lower.includes('loan'))
+    (/\b(what\s+can\s+you\s+do|how\s+can\s+you\s+help)\b/i.test(lower))
   );
   if (isGenericHelp) {
     const friendPrefix = usesBro ? 'bro! ' : (usesDa ? 'da! ' : '');
@@ -1587,8 +1597,10 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
   // -----------------------------------------------------------------
   // 3. GREETINGS & INFORMAL TONE
   // -----------------------------------------------------------------
-  const isGreeting = /\b(hi+|hello+|hey+|howdy|greetings|good\s*(morning|afternoon|evening)|yo+|sup|namaste|vanakkam)\b/i.test(lower)
-    && !lower.includes('budget') && !lower.includes('spend') && !lower.includes('afford') && !lower.includes('save') && !lower.includes('salary') && !lower.includes('project') && !lower.includes('goal');
+  const isGreeting = !hasSpecificFinancialIntent && (
+    /^(?:hi+|hello+|hey+|howdy|greetings|good\s*(?:morning|afternoon|evening)|yo+|sup|namaste|vanakkam)[\s!.,?:;]*$/i.test(lower) ||
+    (/\b(hi+|hello+|hey+|howdy|greetings|good\s*(?:morning|afternoon|evening)|yo+|sup|namaste|vanakkam)\b/i.test(lower) && !hasSpecificFinancialIntent)
+  );
 
   if (isGreeting) {
     const surplus = ctx.summary.totalSavings || 0;
@@ -1653,6 +1665,631 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
         pendingTransaction: null,
       };
     }
+  }
+
+  // -----------------------------------------------------------------
+  // 5b. MODULE 8A: PERSONALIZED AI FINANCIAL ANALYSIS (ONBOARDING + BEHAVIOR)
+  // -----------------------------------------------------------------
+  const fp = ctx.financialProfile;
+  const verifiedRec = fp?.verifiedRecords || {};
+  const statedProf = fp?.statedProfile || fp?.onboarding || {};
+  const discr = fp?.discrepancies || {};
+
+  // 1. "Based on my onboarding details, what should I focus on first?"
+  const isFocusOnboardingQuery = (
+    (/\b(?:onboarding|onboard)\b/i.test(lower) && /\b(?:focus|start|priorit(?:y|ies)|first|guidance)\b/i.test(lower)) ||
+    /\bwhat\s+(?:should|can)\s+i\s+focus\s+on\s+first\b/i.test(lower) ||
+    /\bmy\s+financial\s+priorities\b/i.test(lower)
+  );
+
+  if (isFocusOnboardingQuery) {
+    const rawGoals = statedProf.financialGoals || ctx.user?.financial_goals;
+    const goalsList = Array.isArray(rawGoals) && rawGoals.length > 0
+      ? rawGoals.join(', ')
+      : (typeof rawGoals === 'string' ? rawGoals : 'Wealth accumulation');
+    const occupation = statedProf.occupation || ctx.user?.occupation || 'Professional';
+    const rawStatedIncome = statedProf.monthlyIncome || ctx.user?.monthly_income;
+    const statedIncome = rawStatedIncome ? formatCurrency(rawStatedIncome) : 'Not specified';
+    const verifiedExpenses = verifiedRec.currentMonthExpenses ? formatCurrency(verifiedRec.currentMonthExpenses) : '₹0';
+    const liquidBuffer = verifiedRec.liquidAssets ? formatCurrency(verifiedRec.liquidAssets) : '₹0';
+    const runwayMonths = verifiedRec.emergencyFundRunwayMonths || 0;
+    const isDeficit = verifiedRec.isDeficit;
+
+    let priorityPlan = '';
+    if (runwayMonths < 3) {
+      const targetBuffer = formatCurrency(Math.max(30000, (verifiedRec.currentMonthExpenses || 25000) * 3));
+      priorityPlan += `1. **Build a 3-Month Emergency Safety Buffer (${targetBuffer}):**\n`
+        + `   • *Why:* Your liquid runway covers **${runwayMonths.toFixed(1)} months** of living expenses. Establishing an emergency fund protects your investments from unexpected disruptions.\n\n`;
+    } else {
+      priorityPlan += `1. **Emergency Buffer is Solid (${liquidBuffer} / ${runwayMonths.toFixed(1)} months):**\n`
+        + `   • Your liquidity buffer is healthy. You can safely direct extra surplus into medium and long-term goals.\n\n`;
+    }
+
+    if (isDeficit) {
+      priorityPlan += `2. **Address Monthly Cash-Flow Deficit (${formatCurrency(verifiedRec.deficitAmount)}):**\n`
+        + `   • *Why:* Your recorded expenses this month (${verifiedExpenses}) exceed your recorded income. Stabilizing this should take precedence over new investments.\n\n`;
+    } else {
+      priorityPlan += `2. **Accelerate Stated Goals (${goalsList}):**\n`
+        + `   • *Why:* You specified these priorities during onboarding. You have **${fp?.goals?.activeCount || 0} active goal(s)** in FinMan. Set up automated monthly transfers to stay on track.\n\n`;
+    }
+
+    if (discr.hasDiscrepancies && discr.savingsHabitDeficit) {
+      priorityPlan += `3. **Align Savings Habit with Goal:**\n`
+        + `   • You noted your savings habit as *"${statedProf.savingsHabit || 'flexible'}"*, but your actual savings rate is currently **${verifiedRec.actualSavingsRate || 0}%**. Try the *Pay Yourself First* approach on salary day.\n\n`;
+    } else {
+      priorityPlan += `3. **Maintain Category Budget Discipline:**\n`
+        + `   • Track your discretionary spending categories (like Dining & Shopping) to maintain your target savings rate.\n\n`;
+    }
+
+    const reply = `🎯 **Personalized Focus Plan (Grounded in Onboarding & Financial Records):**\n\n`
+      + `**Your Grounded Profile:**\n`
+      + `• **Role / Occupation:** ${occupation}\n`
+      + `• **Stated Monthly Income:** ${statedIncome} (Verified this month: ${formatCurrency(verifiedRec.currentMonthIncome || 0)})\n`
+      + `• **Stated Priorities:** ${goalsList}\n`
+      + `• **Verified Expenses:** ${verifiedExpenses} | **Liquid Runway:** ${runwayMonths.toFixed(1)} months\n\n`
+      + `### Recommended Priorities:\n`
+      + priorityPlan
+      + `Would you like me to help you plan a realistic budget or review your top expense categories?`;
+
+    return {
+      reply,
+      suggestedQuestions: [
+        'Analyze my spending this month',
+        'Help me plan a realistic budget for next month',
+        'Which expenses should I review first?',
+      ],
+      pendingTransaction: null,
+    };
+  }
+
+  // -----------------------------------------------------------------
+  // 3B. CONVERSATIONAL FOLLOW-UP: "What about last month?" / "How about last month?"
+  // -----------------------------------------------------------------
+  const isLastMonthFollowUp = (
+    /^(?:what|how)\s+about\s+(?:the\s+)?(?:last|previous)\s+month[?!.]*$/i.test(lower.trim()) ||
+    lower.trim() === 'what about last month' ||
+    lower.trim() === 'last month?' ||
+    lower.trim() === 'how about last month'
+  );
+
+  if (isLastMonthFollowUp) {
+    const prevExp = Number(ctx.monthComparison.prevMonthTotalExpenses || 0);
+    const prevInc = Number(ctx.monthComparison.prevMonthTotalIncome || 0);
+    const prevNet = prevInc - prevExp;
+    const prevMonthName = ctx.monthComparison.lastMonthName;
+
+    // Check if the previous conversation turn was specifically about expenses/spending
+    const isExpenseContext = lastUserTurn.includes('spend') || lastUserTurn.includes('expense') || lastAssistantTurn.includes('spending') || lastAssistantTurn.includes('expenses');
+    // Check if previous context was specifically about income
+    const isIncomeContext = lastUserTurn.includes('income') || lastUserTurn.includes('salary');
+
+    if (isExpenseContext) {
+      const curExp = Number(ctx.summary.totalExpenses || 0);
+      const diff = curExp - prevExp;
+      const trendText = diff > 0
+        ? `📈 Current month spending is **+${formatCurrency(diff)} higher** than last month.`
+        : (diff < 0 ? `📉 Current month spending is **${formatCurrency(Math.abs(diff))} lower** than last month.` : `Spending is roughly unchanged.`);
+
+      const prevCats = Object.entries(ctx.monthComparison.prevCatMap).sort((a, b) => b[1] - a[1]);
+      const topPrevCat = prevCats[0];
+      const topCatText = topPrevCat ? `• **Highest Expense Category:** ${topPrevCat[0]} (${formatCurrency(topPrevCat[1])})\n` : '';
+
+      return {
+        reply: `📅 **Last Month Spending Breakdown (${prevMonthName}):**\n\n`
+          + `• **Total Expenses in ${prevMonthName}:** **${formatCurrency(prevExp)}**\n`
+          + topCatText
+          + `• **Comparison with Current Month:** ${trendText}\n\n`
+          + `Would you like me to compare specific categories or review where you can optimize?`,
+        suggestedQuestions: [
+          'Compare this month with last month and explain what changed',
+          'Where can I reduce my expenses?',
+          'Help me plan a realistic budget for next month',
+        ],
+        pendingTransaction: null,
+      };
+    } else if (isIncomeContext) {
+      return {
+        reply: `💼 **Last Month Income Summary (${prevMonthName}):**\n\n`
+          + `• **Total Income Received:** **${formatCurrency(prevInc)}**\n`
+          + `\nWould you like to see how much of this was saved or spent?`,
+        suggestedQuestions: [
+          'How much did I spend this month?',
+          'Compare this month with last month',
+        ],
+        pendingTransaction: null,
+      };
+    } else {
+      return {
+        reply: `📅 **Summary for ${prevMonthName}:**\n\n`
+          + `• **Total Income:** **${formatCurrency(prevInc)}**\n`
+          + `• **Total Expenses:** **${formatCurrency(prevExp)}**\n`
+          + `• **Net Cash Flow:** **${formatCurrency(prevNet)}** ${prevNet >= 0 ? '(Surplus)' : '(Deficit)'}\n\n`
+          + `What aspect of last month would you like to explore further?`,
+        suggestedQuestions: [
+          'Compare this month with last month and explain what changed',
+          'Where am I spending the most?',
+          'Help me plan a realistic budget for next month',
+        ],
+        pendingTransaction: null,
+      };
+    }
+  }
+
+  // -----------------------------------------------------------------
+  // 3C. CONVERSATIONAL FOLLOW-UP: "How can I reduce that?" / "How to reduce that?"
+  // -----------------------------------------------------------------
+  const isReduceThatFollowUp = (
+    /^(?:how\s+(?:can\s+i|to)\s+reduce\s+that|how\s+do\s+i\s+cut\s+that\s+down|how\s+can\s+i\s+cut\s+that|how\s+to\s+reduce\s+it)[?!.]*$/i.test(lower.trim())
+  );
+
+  if (isReduceThatFollowUp) {
+    const cats = fp?.categorySpending || [];
+    const topCatName = cats[0]?.categoryName || 'Discretionary';
+    const topCatTotal = cats[0]?.total || 0;
+
+    return {
+      reply: `💡 **Targeted Strategies to Reduce That Expense:**\n\n`
+        + `Based on your recent breakdown (especially **${topCatName}** at ${formatCurrency(topCatTotal)}):\n\n`
+        + `1. **Institute the 48-Hour Pause Rule:** For non-essential purchases over ₹1,000, wait 48 hours. Most impulse urges fade.\n`
+        + `2. **Set a Category Budget Cap:** Set a monthly envelope for ${topCatName} that is 15% lower (target: **${formatCurrency(Math.round(topCatTotal * 0.85))}**). Just say *"Create a monthly ${topCatName.toLowerCase()} budget of ₹${Math.round(topCatTotal * 0.85)}"*.\n`
+        + `3. **Track Micro-Spends Daily:** If small routine transactions are driving the total, use FinMan's daily reminder at your scheduled time to catch them before they add up.\n\n`
+        + `Would you like me to create this category budget now?`,
+      suggestedQuestions: [
+        `Create a monthly ${topCatName.toLowerCase()} budget of ₹${Math.round(topCatTotal * 0.85)}`,
+        'Help me plan a realistic budget for next month',
+        'How can I save more money based on my current income?',
+      ],
+      pendingTransaction: null,
+    };
+  }
+
+  // -----------------------------------------------------------------
+  // 4. SPENDING ANALYSIS & "HOW MUCH DID I SPEND THIS MONTH?"
+  // -----------------------------------------------------------------
+  const isAnalyzeSpendingQuery = (
+    (/\b(?:analyze|analyse|analysis|breakdown)\b/i.test(lower) && /\b(?:spending|expenses?|spend)\b/i.test(lower)) ||
+    /\banalyze\s+(?:my\s+)?spending\b/i.test(lower) ||
+    lower === 'analyze my spending' ||
+    lower === 'analyze spending' ||
+    lower === 'spending analysis' ||
+    lower === 'analyze my spending this month' ||
+    /\bhow\s+much\s+(?:did|have)\s+i\s+spent?\s+(?:this\s+month|so\s+far)\b/i.test(lower) ||
+    lower === 'how much did i spend this month' ||
+    lower === 'how much did i spend this month?' ||
+    lower === 'how much have i spent this month' ||
+    lower === 'how much have i spent this month?' ||
+    lower === 'how much did i spend' ||
+    lower === 'how much did i spend?' ||
+    lower === 'how much have i spent' ||
+    lower === 'how much have i spent?'
+  );
+
+  if (isAnalyzeSpendingQuery) {
+    const totalExp = Number(ctx.summary.totalExpenses || 0);
+    const txCount = verifiedRec.expenseTransactionCount || 0;
+    const catList = fp?.categorySpending || [];
+    const isPrelim = txCount < 3;
+    const now = new Date();
+    const dateRangeStr = `${ctx.monthComparison.currentMonthName} 1, ${now.getFullYear()} – Today (${ctx.monthComparison.currentMonthName} ${now.getDate()}, ${now.getFullYear()})`;
+
+    if (totalExp === 0 && txCount === 0) {
+      return {
+        reply: `You haven't recorded any expenses for **${ctx.monthComparison.currentMonthName}** yet.\n\n`
+          + `• **Date Range:** ${dateRangeStr}\n`
+          + `• **Total Spending:** ₹0\n\n`
+          + `Once you start logging expenses (or scan receipts with OCR), I'll break down your spending distribution, top categories, and compare them against your monthly income.`,
+        suggestedQuestions: ['I spent ₹120 on lunch today', 'Add my salary of ₹50,000', 'Help me plan a realistic budget for next month'],
+        pendingTransaction: null,
+      };
+    }
+
+    let catDetails = '';
+    if (catList.length > 0) {
+      catDetails = catList.slice(0, 4).map((c) => (
+        `• **${c.categoryName}:** ${formatCurrency(c.total)} (${c.percentageOfTotal}%)`
+      )).join('\n');
+    }
+
+    const largestExpNote = ctx.largestExpense
+      ? `• **Largest Single Expense:** ${formatCurrency(ctx.largestExpense.amount)} for *${ctx.largestExpense.merchant_name || ctx.largestExpense.category_name}* (${ctx.largestExpense.category_name}) on ${ctx.largestExpense.expense_date}.\n`
+      : '';
+
+    const microNote = ctx.microSpending.count > 0
+      ? `• **Micro-Transactions (≤ ₹250):** ${ctx.microSpending.count} transactions totaling ${formatCurrency(ctx.microSpending.total)}.\n`
+      : '';
+
+    const prelimWarning = isPrelim
+      ? `\n> ℹ️ *Preliminary Analysis:* Based on ${txCount} transaction(s). Analysis becomes more comprehensive with ongoing records.\n\n`
+      : '';
+
+    const netSavings = Number(ctx.summary.totalSavings || 0);
+    const deficit = Number(ctx.summary.deficit || 0);
+    let cashFlowStatus = '';
+    if (deficit > 0) {
+      cashFlowStatus = `• **Cash Flow Status:** ⚠️ Expenses exceed recorded income by **${formatCurrency(deficit)}**.\n`;
+    } else if (ctx.summary.totalIncome > 0) {
+      cashFlowStatus = `• **Cash Flow Status:** ✅ Healthy surplus of **${formatCurrency(netSavings)}** (${Math.round((netSavings / ctx.summary.totalIncome) * 100)}% savings rate).\n`;
+    }
+
+    const reply = `📊 **Spending Analysis for ${ctx.monthComparison.currentMonthName}:**\n\n`
+      + `• **Date Range:** ${dateRangeStr}\n`
+      + `• **Total Recorded Spending:** **${formatCurrency(totalExp)}** across **${txCount}** transaction(s)\n`
+      + (ctx.summary.totalIncome > 0 ? `• **Spending-to-Income Ratio:** **${Math.round((totalExp / ctx.summary.totalIncome) * 100)}%** of recorded income (${formatCurrency(ctx.summary.totalIncome)})\n` : '')
+      + cashFlowStatus
+      + largestExpNote
+      + microNote
+      + prelimWarning
+      + (catDetails ? `**Category Breakdown:**\n${catDetails}\n\n` : '')
+      + `💡 *Actionable Insight:* Review your top spending category to ensure it aligns with your monthly goals.`;
+
+    return {
+      reply,
+      suggestedQuestions: [
+        'Where can I reduce my expenses?',
+        'How can I save more money based on my current income?',
+        'Help me plan a realistic budget for next month',
+      ],
+      pendingTransaction: null,
+    };
+  }
+
+  // -----------------------------------------------------------------
+  // 5. SAVINGS STRATEGY & "HOW CAN I SAVE MORE MONEY?"
+  // -----------------------------------------------------------------
+  const isSaveMoreQuery = (
+    /\bhow\s+(?:can|do)\s+i\s+save\s+more\b/i.test(lower) ||
+    (/\bsave\s+more\b/i.test(lower) && (/\bincome\b/i.test(lower) || /\bmoney\b/i.test(lower)))
+  );
+
+  if (isSaveMoreQuery) {
+    const verifiedInc = Number(ctx.summary.totalIncome || 0);
+    const statedInc = Number(statedProf.monthlyIncome || 0);
+    const effectiveInc = verifiedInc > 0 ? verifiedInc : statedInc;
+    const currentExp = Number(ctx.summary.totalExpenses || 0);
+    const currentSavings = Number(ctx.summary.periodSavings || 0);
+    const savingsRate = effectiveInc > 0 ? Math.round((currentSavings / effectiveInc) * 100) : 0;
+
+    const discretionaryCategories = ['Food', 'Dining', 'Entertainment', 'Shopping', 'Lifestyle'];
+    const discretionaryTotal = (fp?.categorySpending || [])
+      .filter((c) => discretionaryCategories.some((d) => c.categoryName.toLowerCase().includes(d.toLowerCase())))
+      .reduce((sum, c) => sum + Number(c.total || 0), 0);
+
+    const potentialTrim15 = Math.round(discretionaryTotal * 0.15);
+    const potentialTrim10 = Math.round((currentExp || effectiveInc * 0.5) * 0.10);
+
+    const reply = `💡 **Personalized Savings Strategy (Grounded in Your Income):**\n\n`
+      + `**Your Numbers:**\n`
+      + `• **Current Monthly Income:** ${formatCurrency(effectiveInc)} ${verifiedInc > 0 ? '(Verified in records)' : '(From onboarding profile)'}\n`
+      + `• **Current Expenses:** ${formatCurrency(currentExp)}\n`
+      + `• **Current Monthly Surplus / Savings:** ${formatCurrency(currentSavings)} (**${savingsRate}%** savings rate)\n\n`
+      + `### Practical Steps to Save More:\n`
+      + (discretionaryTotal > 0
+        ? `1. **Optimize Discretionary Spending (${formatCurrency(discretionaryTotal)}):**\n`
+          + `   Trimming 15% from dining, entertainment, and shopping frees up **+${formatCurrency(potentialTrim15)}/month**.\n\n`
+        : `1. **Target a 10% Overall Expense Optimization:**\n`
+          + `   Reducing variable expenses by 10% unlocks **+${formatCurrency(potentialTrim10)}/month** directly into savings.\n\n`)
+      + `2. **Automate the 20% Benchmark (${formatCurrency(Math.round(effectiveInc * 0.20))}):**\n`
+        + `   Set up an automatic SIP or recurring deposit on your salary credit day before discretionary spending begins.\n\n`
+      + `3. **Audit Micro-Expenses:**\n`
+        + `   Small daily UPI expenses (tea, snacks, cabs) often accumulate quietly. Capping them adds ₹2,000–₹4,000 back to your wallet each month.\n\n`
+      + `Would you like me to help you plan category budget limits for next month?`;
+
+    return {
+      reply,
+      suggestedQuestions: [
+        'Help me plan a realistic budget for next month',
+        'Where can I reduce my expenses?',
+        'Help me save money for my goals',
+      ],
+      pendingTransaction: null,
+    };
+  }
+
+  // -----------------------------------------------------------------
+  // 6. SAVINGS GOALS PLANNING & "HELP ME SAVE MONEY FOR MY GOALS"
+  // -----------------------------------------------------------------
+  const isGoalSavingsQuery = (
+    /\bam\s+i\s+on\s+track\b/i.test(lower) ||
+    (/\bon\s+track\b/i.test(lower) && /\b(?:goal|goals|car|target|education|house|save|saving)\b/i.test(lower)) ||
+    /\b(?:help\s+me\s+)?save\s+(?:money\s+)?for\s+(?:my\s+)?goals?\b/i.test(lower) ||
+    /\bsaving\s+(?:money\s+)?for\s+(?:my\s+)?goals?\b/i.test(lower) ||
+    /\bhow\s+(?:can|do)\s+i\s+save\s+for\s+(?:my\s+)?goals?\b/i.test(lower) ||
+    /\bgoals?\s+(?:planning|progress|savings?)\b/i.test(lower)
+  );
+
+  if (isGoalSavingsQuery) {
+    const goalsList = fp?.goals?.items || ctx.goals || [];
+
+    if (goalsList.length === 0) {
+      return {
+        reply: `You don't have any active savings goals recorded yet in FinMan.\n\n`
+          + `Setting clear targets is the most effective way to stay disciplined. You can create a goal like:\n`
+          + `• *"Create a savings goal of ₹5 lakh for my car by December 2027"* or\n`
+          + `• *"Create an emergency fund savings goal of ₹1.5 lakh"*.\n\n`
+          + `Once created, you can use the **Add Savings** button on any goal to record contributions over time!`,
+        suggestedQuestions: [
+          'Create a savings goal of ₹5 lakh for my car by December 2027',
+          'Create a savings goal of ₹1.5 lakh for emergency fund',
+          'Help me plan a realistic budget for next month',
+        ],
+        pendingTransaction: null,
+      };
+    }
+
+    // If user asked about a specific goal (car, house, education, emergency)
+    let matchedGoals = goalsList;
+    if (lower.includes('car')) matchedGoals = goalsList.filter((g) => (g.name || g.goal_name || g.goalName || '').toLowerCase().includes('car'));
+    else if (lower.includes('house')) matchedGoals = goalsList.filter((g) => (g.name || g.goal_name || g.goalName || '').toLowerCase().includes('house'));
+    else if (lower.includes('education')) matchedGoals = goalsList.filter((g) => (g.name || g.goal_name || g.goalName || '').toLowerCase().includes('education'));
+    else if (lower.includes('emergency')) matchedGoals = goalsList.filter((g) => (g.name || g.goal_name || g.goalName || '').toLowerCase().includes('emergency'));
+    if (matchedGoals.length === 0) matchedGoals = goalsList;
+
+    const monthlySurplus = Number(ctx.summary.totalSavings || 0);
+
+    const goalReports = matchedGoals.map((targetGoal) => {
+      const goalName = targetGoal.goalName || targetGoal.name || targetGoal.goal_name || 'Savings Goal';
+      const targetAmt = Number(targetGoal.target_amount || targetGoal.targetAmount || 0);
+      const currentAmt = Number(targetGoal.current_amount || targetGoal.currentAmount || 0);
+      const remainingAmt = Math.max(0, targetAmt - currentAmt);
+      const progressPct = targetAmt > 0 ? Math.round((currentAmt / targetAmt) * 100) : 0;
+      const targetDateStr = targetGoal.target_date || targetGoal.targetDate;
+
+      let dateFeasibility = '';
+      if (targetDateStr) {
+        const targetDate = new Date(targetDateStr);
+        const today = new Date();
+        const diffMonths = Math.max(1, Math.round((targetDate - today) / (1000 * 60 * 60 * 24 * 30.44)));
+        const requiredMonthly = Math.round(remainingAmt / diffMonths);
+
+        const statusTag = monthlySurplus >= requiredMonthly
+          ? `✅ **On Track**`
+          : `⚠️ **Action Required**`;
+
+        dateFeasibility = `  • Target Date: ${new Date(targetDateStr).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })} (${diffMonths} mo left)\n`
+          + `  • Required Monthly: **${formatCurrency(requiredMonthly)}/month**\n`
+          + `  • Status: ${statusTag} (Your current surplus: ${formatCurrency(monthlySurplus)}/mo)\n`;
+      } else {
+        dateFeasibility = `  • Target Date: Not set (Open-ended)\n`;
+      }
+
+      return `🎯 **${goalName}**\n`
+        + `  • Target: ${formatCurrency(targetAmt)} | Saved: ${formatCurrency(currentAmt)} (**${progressPct}%**)\n`
+        + `  • Remaining: ${formatCurrency(remainingAmt)}\n`
+        + dateFeasibility;
+    }).join('\n');
+
+    const reply = `🎯 **Goal Tracking Analysis & Savings Progress:**\n\n`
+      + goalReports + `\n`
+      + `💡 **How to contribute:** You can record savings anytime via the **Add Savings** button on your Savings & Goals page, or just tell me *"Record a contribution of ₹5,000 to my ${matchedGoals[0]?.name || 'goal'}"*!`;
+
+    return {
+      reply,
+      suggestedQuestions: [
+        'Where can I reduce my expenses?',
+        'Help me plan a realistic budget for next month',
+        'How can I save more money based on my current income?',
+      ],
+      pendingTransaction: null,
+    };
+  }
+
+  // -----------------------------------------------------------------
+  // 7. MONTHLY BUDGET PLANNING & "HI, I JUST WANT TO PLAN MY MONTHLY BUDGET. PLEASE HELP ME."
+  // -----------------------------------------------------------------
+  const isBudgetPlanQuery = (
+    /\b(?:plan|planning)\b.*\b(?:budget|budgets)\b/i.test(lower) ||
+    /\b(?:budget|budgets)\b.*\b(?:plan|planning)\b/i.test(lower) ||
+    /\b(?:suggest|recommend|create)\s+(?:a\s+)?(?:monthly\s+|realistic\s+)?budget\b/i.test(lower) ||
+    /\bhelp\s+me\s+plan\b/i.test(lower) ||
+    /\bwant\s+to\s+plan\s+(?:my\s+)?(?:monthly\s+)?budget\b/i.test(lower) ||
+    /\bhelp\s+me\s+with\s+(?:my\s+)?budget\b/i.test(lower) ||
+    /\bhelp\s+(?:me\s+)?(?:plan|create)\s+(?:my\s+)?(?:monthly\s+)?budget\b/i.test(lower)
+  );
+
+  if (isBudgetPlanQuery) {
+    const verifiedInc = Number(ctx.summary.totalIncome || 0);
+    const statedInc = Number(statedProf.monthlyIncome || 0);
+    const baseInc = verifiedInc > 0 ? verifiedInc : (statedInc > 0 ? statedInc : 60000);
+
+    const needs = Math.round(baseInc * 0.50);
+    const wants = Math.round(baseInc * 0.30);
+    const savings = Math.round(baseInc * 0.20);
+
+    const topCategories = fp?.categorySpending || [];
+    let suggestedCatBreakdown = '';
+    if (topCategories.length > 0) {
+      suggestedCatBreakdown = `\n**Tailored Category Caps (Based on your past transactions):**\n`
+        + topCategories.slice(0, 3).map((c) => {
+          const suggested = Math.round(Number(c.total || 0) * 0.95);
+          return `• **${c.categoryName}:** Suggest capping at **${formatCurrency(suggested)}** (Past: ${formatCurrency(c.total)})`;
+        }).join('\n') + '\n';
+    }
+
+    // Check existing budgets
+    let existingBudgetsNote = '';
+    if (ctx.activeBudgets && ctx.activeBudgets.length > 0) {
+      existingBudgetsNote = `\n**Your Current Active Budgets:**\n`
+        + ctx.activeBudgets.map((b) => `• **${b.category_name || b.name}:** Limit ${formatCurrency(b.amount)} (Spent: ${formatCurrency(b.spent || 0)})`).join('\n') + `\n`;
+    }
+
+    const greetingPrefix = /\b(hi+|hello+|hey+|vanakkam|namaste)\b/i.test(lower)
+      ? `Hello ${userName}! I'd be glad to help you plan your monthly budget.\n\n`
+      : '';
+
+    const reply = `${greetingPrefix}📋 **Realistic Monthly Budget Blueprint (50/30/20 Rule & Framework):**\n\n`
+      + `**Grounded Monthly Income Base:** **${formatCurrency(baseInc)}** ${verifiedInc > 0 ? '(From your verified records)' : '(From onboarding profile)'}\n\n`
+      + `• **Essentials / Needs (50%):** **${formatCurrency(needs)}**\n`
+      + `  Includes: Rent, Groceries, Utilities, Essential Transport, Healthcare.\n`
+      + `• **Discretionary / Wants (30%):** **${formatCurrency(wants)}**\n`
+      + `  Includes: Dining out, Entertainment, Subscriptions, Shopping.\n`
+      + `• **Savings & Investments / Goals Reserve (20%):** **${formatCurrency(savings)}**\n`
+      + `  Directly into emergency safety funds, savings goals, or SIP investments.\n`
+      + existingBudgetsNote
+      + suggestedCatBreakdown + `\n`
+      + `💡 *FinMan Suggestion:* This is a suggested plan. To activate any category budget limit in your records, simply tell me (e.g. *"Create a monthly food budget of ₹${Math.min(needs, 10000)}"* ) and I will confirm and save it.`;
+
+    return {
+      reply,
+      suggestedQuestions: [
+        `Create a monthly food budget of ₹${Math.round(needs * 0.35)}`,
+        'Where can I reduce my expenses?',
+        'Help me save money for my goals',
+      ],
+      pendingTransaction: null,
+    };
+  }
+
+  // -----------------------------------------------------------------
+  // 8. EXPENSE REDUCTION & "WHERE CAN I REDUCE MY EXPENSES?"
+  // -----------------------------------------------------------------
+  const isReviewExpensesQuery = (
+    /\b(?:which|what)\s+expenses?\s+(?:should\s+i\s+)?review\s+first\b/i.test(lower) ||
+    /\bexpenses?\s+to\s+review\b/i.test(lower) ||
+    /\b(?:where|how)\s+can\s+i\s+(?:reduce|cut|trim|lower|decrease)\s+(?:my\s+)?(?:expenses?|spending)\b/i.test(lower) ||
+    /\breduce\s+(?:my\s+)?(?:expenses?|spending)\b/i.test(lower) ||
+    /\bcut\s+(?:down|back)\s+(?:on\s+)?(?:expenses?|spending)\b/i.test(lower) ||
+    /\bwhere\s+can\s+i\s+cut\s+back\b/i.test(lower) ||
+    /\bwhere\s+to\s+reduce\b/i.test(lower) ||
+    /\bwhere\s+can\s+i\s+save\b/i.test(lower)
+  );
+
+  if (isReviewExpensesQuery) {
+    const cats = fp?.categorySpending || [];
+    const overBudgets = (fp?.budgets?.items || []).filter((b) => b.isOverBudget);
+    const microTotal = ctx.microSpending.total;
+    const microCount = ctx.microSpending.count;
+
+    let reviewItems = [];
+    if (overBudgets.length > 0) {
+      overBudgets.forEach((b) => {
+        reviewItems.push(`1. **Over-Budget Category: ${b.categoryName || b.name}** — Spent **${formatCurrency(b.spent)}** against a limit of **${formatCurrency(b.amount)}** (Overrun: **${formatCurrency(b.overrun)}**). Setting an envelope limit here gives immediate control.`);
+      });
+    }
+
+    if (cats.length > 0) {
+      const topDiscretionary = cats.find((c) => ['food', 'dining', 'entertainment', 'shopping', 'lifestyle'].some((d) => c.categoryName.toLowerCase().includes(d)));
+      const topCat = topDiscretionary || cats[0];
+      const trim15 = Math.round(Number(topCat.total || 0) * 0.15);
+      reviewItems.push(`${reviewItems.length + 1}. **Highest Discretionary Spend: ${topCat.categoryName}:** Currently **${formatCurrency(topCat.total)}** (${topCat.percentageOfTotal}% of spending). Trimming 15% here reclaims **+${formatCurrency(trim15)}/month** into your savings.`);
+    }
+
+    if (microCount >= 3) {
+      reviewItems.push(`${reviewItems.length + 1}. **Micro-Transactions (≤ ₹250):** You have logged **${microCount} small purchases** totaling **${formatCurrency(microTotal)}**. Daily tea, quick snacks, and impulsive convenience orders often slip by without notice.`);
+    }
+
+    if (ctx.largestExpense) {
+      reviewItems.push(`${reviewItems.length + 1}. **Largest Single Spend:** ${formatCurrency(ctx.largestExpense.amount)} for *${ctx.largestExpense.merchant_name || ctx.largestExpense.category_name}* on ${ctx.largestExpense.expense_date}.`);
+    }
+
+    if (reviewItems.length === 0) {
+      reviewItems.push(`1. No high-risk expense concentrations or over-budget categories detected! Keep logging your daily expenses to monitor trends.`);
+    }
+
+    const reply = `🔍 **Prioritized Expense Review & Reduction Opportunities (Ranked by Financial Impact):**\n\n`
+      + reviewItems.join('\n\n') + `\n\n`
+      + `💡 *Tip:* Addressing the #1 item above can immediately restore surplus to your monthly cash flow. Would you like me to set a category budget cap?`;
+
+    return {
+      reply,
+      suggestedQuestions: [
+        'Analyze my spending this month',
+        'Help me plan a realistic budget for next month',
+        'Help me save money for my goals',
+      ],
+      pendingTransaction: null,
+    };
+  }
+
+  // 7. "What financial habits should I improve?"
+  const isHabitsQuery = (
+    /\b(?:what|which)\s+(?:financial\s+)?habits?\s+(?:should\s+i|to)\s+improve\b/i.test(lower) ||
+    /\bimprove\s+(?:my\s+)?(?:financial\s+)?habits?\b/i.test(lower)
+  );
+
+  if (isHabitsQuery) {
+    const statedHabit = statedProf.savingsHabit || 'Flexible';
+    const actualSavingsRate = verifiedRec.actualSavingsRate || 0;
+    const hasDiscr = discr.savingsHabitDeficit;
+    const runway = verifiedRec.emergencyFundRunwayMonths || 0;
+
+    let habitAdvice = [];
+    if (hasDiscr || actualSavingsRate < 15) {
+      habitAdvice.push(`1. **Shift to "Pay Yourself First":**\n   You stated during onboarding that you prefer *"${statedHabit}"*, but your actual savings rate is **${actualSavingsRate}%**. Transfer your target 20% to savings on the day salary arrives rather than waiting for month-end leftovers.`);
+    } else {
+      habitAdvice.push(`1. **Maintain Consistent Savings Habit:**\n   Your actual savings rate of **${actualSavingsRate}%** is strong. Keep automating these transfers.`);
+    }
+
+    if (verifiedRec.expenseTransactionCount < 5) {
+      habitAdvice.push(`2. **Real-Time Daily Logging:**\n   You currently have ${verifiedRec.expenseTransactionCount} expense record(s). Logging purchases immediately via chat or scanning receipts avoids the month-end memory gap.`);
+    } else {
+      habitAdvice.push(`2. **Pre-Purchase 48-Hour Rule for Discretionary Items:**\n   For non-essential purchases over ₹2,000, waiting 48 hours curbs impulse buying by over 40%.`);
+    }
+
+    if (runway < 3) {
+      habitAdvice.push(`3. **Prioritize Emergency Liquidity:**\n   Ensure your buffer reaches 3 months of basic expenses before taking on high-risk speculative investments.`);
+    }
+
+    const reply = `🌱 **Actionable Financial Habit Improvements:**\n\n`
+      + habitAdvice.join('\n\n') + `\n\n`
+      + `Which area would you like to work on first?`;
+
+    return {
+      reply,
+      suggestedQuestions: [
+        'Based on my onboarding details, what should I focus on first?',
+        'How can I save more money based on my current income?',
+        'Help me plan a realistic budget for next month',
+      ],
+      pendingTransaction: null,
+    };
+  }
+
+  // 8. "What changed in my financial situation this month?"
+  const isWhatChangedQuery = (
+    /\bwhat\s+(?:has\s+)?changed\s+in\s+my\s+financial\s+situation\b/i.test(lower) ||
+    (/\bwhat\s+changed\b/i.test(lower) && /\b(?:financial|situation|this\s+month)\b/i.test(lower))
+  );
+
+  if (isWhatChangedQuery) {
+    const curExp = Number(ctx.summary.totalExpenses || 0);
+    const prevExp = ctx.incomeData.prevMonthExpenseTotal;
+    const diffExp = curExp - prevExp;
+
+    const curInc = Number(ctx.summary.totalIncome || 0);
+    const prevInc = ctx.incomeData.prevMonthTotal;
+    const diffInc = curInc - prevInc;
+
+    const curSavings = Number(ctx.summary.periodSavings || 0);
+    const overruns = (fp?.budgets?.items || []).filter((b) => b.isOverBudget);
+
+    const expText = diffExp > 0
+      ? `📈 Expenses rose by **${formatCurrency(diffExp)}** compared to last month`
+      : (diffExp < 0 ? `📉 Expenses decreased by **${formatCurrency(Math.abs(diffExp))}** compared to last month` : `Expenses remained flat compared to last month`);
+
+    const incText = diffInc > 0
+      ? `📈 Income increased by **${formatCurrency(diffInc)}**`
+      : (diffInc < 0 ? `📉 Income decreased by **${formatCurrency(Math.abs(diffInc))}**` : `Income remained steady`);
+
+    const budgetStatusText = overruns.length > 0
+      ? `⚠️ You have **${overruns.length} category budget overrun(s)** this month.`
+      : `✅ All active category budgets are within limits.`;
+
+    const reply = `🔄 **Month-over-Month Financial Shifts (${ctx.monthComparison.currentMonthName} vs. ${ctx.monthComparison.prevMonthName}):**\n\n`
+      + `• **Income Shift:** ${incText} (${formatCurrency(curInc)} vs ${formatCurrency(prevInc)})\n`
+      + `• **Spending Shift:** ${expText} (${formatCurrency(curExp)} vs ${formatCurrency(prevExp)})\n`
+      + `• **Current Monthly Surplus:** **${formatCurrency(curSavings)}** (Deficit: ${formatCurrency(ctx.summary.deficit || 0)})\n`
+      + `• **Budget Status:** ${budgetStatusText}\n\n`
+      + `Top spending category this month: **${Object.entries(ctx.monthComparison.currentCatMap).sort((a,b)=>b[1]-a[1])[0]?.[0] || 'None recorded yet'}**.`;
+
+    return {
+      reply,
+      suggestedQuestions: [
+        'Analyze my spending this month',
+        'Which expenses should I review first?',
+        'Help me plan a realistic budget for next month',
+      ],
+      pendingTransaction: null,
+    };
   }
 
   // -----------------------------------------------------------------

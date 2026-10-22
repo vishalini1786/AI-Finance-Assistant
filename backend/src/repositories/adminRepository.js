@@ -52,6 +52,46 @@ async function deleteUser(userId) {
   return result.rows[0] || null;
 }
 
+async function deleteUsersBulk(userIds, callingAdminId) {
+  // Deduplicate and filter positive integers
+  const cleanIds = Array.from(new Set(
+    (userIds || [])
+      .map((id) => parseInt(id, 10))
+      .filter((id) => !isNaN(id) && id > 0 && id !== parseInt(callingAdminId, 10))
+  ));
+
+  if (cleanIds.length === 0) {
+    return { deletedCount: 0, deletedUsers: [] };
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Execute bulk deletion safely with parameterization
+    const result = await client.query(
+      `DELETE FROM users
+       WHERE user_id = ANY($1::int[])
+         AND user_id != $2
+       RETURNING user_id, name, email`,
+      [cleanIds, callingAdminId]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      deletedCount: result.rowCount,
+      deletedUsers: result.rows,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+
 // ── Platform Overview Stats ───────────────────────────────────────
 
 async function getPlatformStats() {
@@ -238,6 +278,7 @@ module.exports = {
   countUsers,
   setUserRole,
   deleteUser,
+  deleteUsersBulk,
   getPlatformStats,
   getUserGrowthByMonth,
   getDocumentStats,

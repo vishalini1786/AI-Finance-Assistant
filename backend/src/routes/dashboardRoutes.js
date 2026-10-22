@@ -17,6 +17,11 @@ router.post('/chat', dashboardController.chat);
 router.post('/ai/confirm-transaction', dashboardController.confirmAiTransaction);
 router.post('/confirm-transaction', dashboardController.confirmAiTransaction);
 router.get('/insights', dashboardController.getInsights);
+router.post('/insights/refresh', dashboardController.refreshInsights);
+router.patch('/insights/:id/dismiss', dashboardController.dismissInsight);
+router.patch('/insights/:id/read', dashboardController.markInsightRead);
+router.post('/insights/:id/feedback', dashboardController.recordFeedback);
+router.get('/financial-profile', dashboardController.getFinancialProfile);
 
 module.exports = router;
 

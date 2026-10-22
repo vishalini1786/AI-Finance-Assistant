@@ -77,6 +77,7 @@ export const Onboarding = () => {
     investmentPreference: '',
     expenseReminderEnabled: true,
     expenseReminderTime: '21:00',
+    timezone: (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'Asia/Kolkata') || 'Asia/Kolkata',
     microExpensePromptsEnabled: true,
     aiPreferences: [],
   });
@@ -223,6 +224,7 @@ export const Onboarding = () => {
         investmentPreference: data.investmentPreference,
         expenseReminderEnabled: data.expenseReminderEnabled,
         expenseReminderTime: data.expenseReminderTime,
+        timezone: data.timezone,
         microExpensePromptsEnabled: data.microExpensePromptsEnabled,
       });
       navigate('/dashboard', { replace: true });
@@ -647,20 +649,28 @@ export const Onboarding = () => {
             </div>
 
             {data.expenseReminderEnabled && (
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
-                  Preferred Reminder Time:
-                </label>
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    Preferred Reminder Time:
+                  </label>
+                  <input
+                    type="time"
+                    value={data.expenseReminderTime}
+                    onChange={(e) => setData({ ...data, expenseReminderTime: e.target.value })}
+                    className="border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono font-medium"
+                  />
+                </div>
                 <div className="grid grid-cols-3 gap-2">
                   {['20:00', '21:00', '22:00'].map((time) => (
                     <button
                       key={time}
                       type="button"
                       onClick={() => setData({ ...data, expenseReminderTime: time })}
-                      className={`py-1.5 px-3 rounded-xl text-xs font-semibold border ${
+                      className={`py-1.5 px-3 rounded-xl text-xs font-semibold border transition ${
                         data.expenseReminderTime === time
                           ? 'border-sky-500 bg-sky-500 text-white shadow-sm'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                     >
                       {time === '20:00' ? '8:00 PM' : time === '21:00' ? '9:00 PM' : '10:00 PM'}

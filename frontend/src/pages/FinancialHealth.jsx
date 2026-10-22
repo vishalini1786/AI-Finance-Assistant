@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
+import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 import dashboardService from '../services/dashboardService';
 import { formatCurrency } from '../utils/formatCurrency';
 import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, TrendingUp } from 'lucide-react';
@@ -147,6 +148,15 @@ export const FinancialHealth = () => {
             <p className="text-xs text-slate-300 mt-3">
               Calculated from recorded savings, budget utilization, liabilities, assets, and goal progress. Not an ML prediction.
             </p>
+          </div>
+
+          {/* ── Personalized Health Insights ───────────────────── */}
+          <div className="mb-8">
+            <PersonalizedInsights
+              pageContext="FINANCIAL_HEALTH"
+              title="Personalized Financial Health & Runway Recommendations"
+              subtitle="Action plan to stabilize cash flow, build liquidity runway, and balance stated priorities"
+            />
           </div>
 
           {/* ── 5-Component Breakdown ──────────────────────────── */}

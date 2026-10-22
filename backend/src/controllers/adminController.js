@@ -7,6 +7,7 @@ const {
   countUsers,
   setUserRole,
   deleteUser,
+  deleteUsersBulk,
   getPlatformStats,
   getUserGrowthByMonth,
   getDocumentStats,
@@ -103,6 +104,35 @@ async function removeUser(req, res) {
     return sendError(res, { message: 'Failed to delete user', error: err.message });
   }
 }
+
+async function bulkRemoveUsers(req, res) {
+  try {
+    const { userIds } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return sendError(res, { statusCode: 400, message: 'Please provide a non-empty array of user IDs to delete.' });
+    }
+
+    // Filter out the admin's own ID
+    const sanitizedIds = userIds.filter((id) => parseInt(id, 10) !== req.userId);
+    if (sanitizedIds.length === 0) {
+      return sendError(res, { statusCode: 400, message: 'Cannot delete your own active administrator account.' });
+    }
+
+    const result = await deleteUsersBulk(sanitizedIds, req.userId);
+
+    return sendSuccess(res, {
+      message: `Successfully deleted ${result.deletedCount} user(s).`,
+      data: {
+        deletedCount: result.deletedCount,
+        deletedUsers: result.deletedUsers,
+      },
+    });
+  } catch (err) {
+    return sendError(res, { message: 'Failed to bulk delete users', error: err.message });
+  }
+}
+
 
 // ── System Health ─────────────────────────────────────────────────
 
@@ -234,6 +264,7 @@ module.exports = {
   listUsers,
   updateUserRole,
   removeUser,
+  bulkRemoveUsers,
   systemHealth,
   documentMonitor,
   aiMonitoring,

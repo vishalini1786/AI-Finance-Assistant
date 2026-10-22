@@ -64,11 +64,68 @@ const confirmAiTransaction = asyncHandler(async (req, res) => {
   });
 });
 
+const { buildFinancialProfile } = require('../services/financialProfileService');
+
 const getInsights = asyncHandler(async (req, res) => {
-  const insights = await aiInsightService.getInsights(req.userId);
+  const { pageContext, status, refresh } = req.query;
+  const result = await aiInsightService.getInsights(req.userId, {
+    pageContext,
+    status,
+    refresh: refresh === 'true',
+  });
   return sendSuccess(res, {
-    message: 'Financial insights fetched successfully',
-    data: { insights },
+    message: 'Personalized financial insights fetched successfully',
+    data: result,
+  });
+});
+
+const getFinancialProfile = asyncHandler(async (req, res) => {
+  const profile = await buildFinancialProfile(req.userId);
+  return sendSuccess(res, {
+    message: 'Personalized financial profile fetched successfully',
+    data: { profile },
+  });
+});
+
+const dismissInsight = asyncHandler(async (req, res) => {
+  const updated = await aiInsightService.dismissInsight(req.params.id, req.userId);
+  if (!updated) {
+    return sendError(res, { statusCode: 404, message: 'Insight not found' });
+  }
+  return sendSuccess(res, { message: 'Insight dismissed', data: { insight: updated } });
+});
+
+const markInsightRead = asyncHandler(async (req, res) => {
+  const updated = await aiInsightService.markRead(req.params.id, req.userId);
+  if (!updated) {
+    return sendError(res, { statusCode: 404, message: 'Insight not found' });
+  }
+  return sendSuccess(res, { message: 'Insight marked as read', data: { insight: updated } });
+});
+
+const recordFeedback = asyncHandler(async (req, res) => {
+  const { feedback } = req.body;
+  if (!['HELPFUL', 'UNHELPFUL'].includes(String(feedback).toUpperCase())) {
+    return sendError(res, { statusCode: 400, message: 'Feedback must be HELPFUL or UNHELPFUL' });
+  }
+  const updated = await aiInsightService.recordFeedback(req.params.id, req.userId, feedback);
+  if (!updated) {
+    return sendError(res, { statusCode: 404, message: 'Insight not found' });
+  }
+  return sendSuccess(res, { message: 'Feedback recorded', data: { insight: updated } });
+});
+
+const refreshInsights = asyncHandler(async (req, res) => {
+  const refreshRes = await aiInsightService.refreshInsightsForUser(req.userId);
+  const activeInsights = await aiInsightService.getInsights(req.userId, { status: 'ACTIVE' });
+  return sendSuccess(res, {
+    message: 'Insights refreshed successfully',
+    data: {
+      success: refreshRes.success,
+      count: refreshRes.count,
+      insights: activeInsights.insights || [],
+      profile: refreshRes.profile,
+    },
   });
 });
 
@@ -81,5 +138,10 @@ module.exports = {
   chat,
   confirmAiTransaction,
   getInsights,
+  getFinancialProfile,
+  dismissInsight,
+  markInsightRead,
+  recordFeedback,
+  refreshInsights,
 };
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -17,6 +17,7 @@ import {
   LogOut,
   Shield,
   Wallet,
+  X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -50,7 +51,12 @@ const menuItems = [
   { name: 'Reports', path: '/reports', icon: FileText },
 ];
 
-export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
+export const Sidebar = ({
+  isCollapsed,
+  setIsCollapsed,
+  isMobileOpen = false,
+  setIsMobileOpen = () => {},
+}) => {
   const navigate = useNavigate();
   const { logout, currentUser } = useAuth();
   const { t } = useLanguage();
@@ -61,12 +67,20 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
     navigate('/login', { replace: true });
   };
 
-  return (
-    <aside 
-      className={`${
-        isCollapsed ? 'w-20' : 'w-64'
-      } bg-slate-900 text-white flex flex-col h-screen sticky top-0 border-r border-slate-800 select-none transition-all duration-300 ease-in-out shrink-0 z-30`}
-    >
+  // Lock body scroll when mobile drawer is open
+  useEffect(() => {
+    if (isMobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileOpen]);
+
+  const navContent = (
+    <div className="flex flex-col h-full bg-slate-900 text-white select-none">
       {/* Brand Header with Collapse Toggle */}
       <div className="p-4 h-16 border-b border-slate-800 flex items-center justify-between">
         {!isCollapsed ? (
@@ -75,7 +89,7 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
               FinMan
             </h1>
             <p className="text-[10px] text-slate-400 font-medium tracking-wide truncate">
-              AI Finance Personal Assistant
+              AI Personal Finance Assistant
             </p>
           </div>
         ) : (
@@ -84,23 +98,35 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
           </div>
         )}
 
+        {/* Desktop collapse button */}
         <button
+          type="button"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-          title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          className="hidden md:flex p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         >
           {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
+
+        {/* Mobile close button */}
+        <button
+          type="button"
+          onClick={() => setIsMobileOpen(false)}
+          className="md:hidden p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          aria-label="Close navigation"
+        >
+          <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* Primary Navigation */}
-      <nav className="flex-1 px-3 py-5 space-y-1.5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {!isCollapsed && (
           <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-2 transition-opacity">
             Core Features
           </span>
         )}
-        
+
         {menuItems.map((item) => {
           const Icon = item.icon;
           const label = t(menuKeyMap[item.path]) || item.name;
@@ -108,11 +134,14 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => setIsMobileOpen(false)}
               title={isCollapsed ? label : undefined}
               className={({ isActive }) =>
-                `flex items-center ${isCollapsed ? 'justify-center px-0' : 'justify-between px-3.5'} py-2.5 rounded-lg text-xs font-semibold transition-all group relative ${
+                `flex items-center ${
+                  isCollapsed ? 'justify-center px-0' : 'justify-between px-3.5'
+                } py-2.5 rounded-xl text-xs font-semibold transition-all group relative min-h-[40px] ${
                   isActive
-                    ? 'bg-finman-blue text-white shadow-sm'
+                    ? 'bg-finman-blue text-white shadow-sm font-bold'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`
               }
@@ -121,7 +150,11 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
                 <Icon className="w-4 h-4 shrink-0" />
                 {!isCollapsed && <span className="truncate">{label}</span>}
               </div>
-              {!isCollapsed && item.path === '/reports' && <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">Live</span>}
+              {!isCollapsed && item.path === '/reports' && (
+                <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 font-bold">
+                  Live
+                </span>
+              )}
 
               {/* Tooltip on Hover when Collapsed */}
               {isCollapsed && (
@@ -134,16 +167,19 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
         })}
       </nav>
 
-      <div className="mt-auto px-3 pb-4 pt-3 border-t border-slate-800 space-y-1.5">
+      <div className="mt-auto px-3 pb-4 pt-3 border-t border-slate-800 space-y-1">
         {/* Admin Panel Link — only visible to admins */}
         {isAdmin && (
           <NavLink
             to="/admin"
+            onClick={() => setIsMobileOpen(false)}
             title={isCollapsed ? 'Admin Panel' : undefined}
             className={({ isActive }) =>
-              `flex items-center ${isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'} py-2.5 rounded-lg text-xs font-semibold group relative ${
+              `flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'
+              } py-2.5 rounded-xl text-xs font-semibold group relative min-h-[40px] ${
                 isActive
-                  ? 'bg-violet-600 text-white'
+                  ? 'bg-violet-600 text-white font-bold'
                   : 'text-violet-400 hover:bg-violet-900/30 hover:text-violet-300'
               }`
             }
@@ -159,8 +195,17 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
         )}
         <NavLink
           to="/profile"
+          onClick={() => setIsMobileOpen(false)}
           title={isCollapsed ? t('profile') : undefined}
-          className={({ isActive }) => `flex items-center ${isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'} py-2.5 rounded-lg text-xs font-semibold ${isActive ? 'bg-finman-blue text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+          className={({ isActive }) =>
+            `flex items-center ${
+              isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'
+            } py-2.5 rounded-xl text-xs font-semibold min-h-[40px] ${
+              isActive
+                ? 'bg-finman-blue text-white font-bold'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`
+          }
         >
           <Settings className="w-4 h-4 shrink-0" />
           {!isCollapsed && <span>{t('profile')}</span>}
@@ -169,12 +214,45 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
           type="button"
           onClick={handleLogout}
           title={isCollapsed ? t('logout') : undefined}
-          className={`w-full flex items-center ${isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'} py-2.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-rose-950 hover:text-rose-200`}
+          className={`w-full flex items-center ${
+            isCollapsed ? 'justify-center px-0' : 'space-x-3 px-3.5'
+          } py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-rose-950 hover:text-rose-200 transition-colors cursor-pointer min-h-[40px]`}
         >
           <LogOut className="w-4 h-4 shrink-0" />
           {!isCollapsed && <span>{t('logout')}</span>}
         </button>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Persistent Sidebar */}
+      <aside
+        className={`hidden md:flex ${
+          isCollapsed ? 'w-20' : 'w-64'
+        } flex-col h-screen sticky top-0 border-r border-slate-800 select-none transition-all duration-300 ease-in-out shrink-0 z-30`}
+      >
+        {navContent}
+      </aside>
+
+      {/* Mobile Drawer (Overlay + Backdrop) */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsMobileOpen(false)}
+          />
+
+          {/* Drawer content */}
+          <div className="relative w-64 max-w-[80vw] h-full shadow-2xl z-10 animate-in slide-in-from-left duration-200">
+            {navContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 };
+
+export default Sidebar;

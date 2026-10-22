@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import calendarService from '../services/calendarService';
 import { AddCalendarEventModal } from '../components/calendar/AddCalendarEventModal';
+import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -232,6 +233,14 @@ export const SmartCalendar = () => {
 
       {error && <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}
       {loading && <div className="mb-6 text-center text-xs font-semibold text-slate-400">Loading saved financial events...</div>}
+
+      {/* Module 8A: Personalized Calendar Insights */}
+      <PersonalizedInsights
+        pageContext="CALENDAR"
+        title="Recurring Commitments & Cash Flow Timing"
+        subtitle="Upcoming bills, subscription audits, and obligation buffers"
+        className="mb-6"
+      />
 
       {/* Filter Tabs & Monthly Flow Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">

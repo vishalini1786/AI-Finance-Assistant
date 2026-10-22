@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { SummaryCard } from '../components/common/SummaryCard';
+import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 import budgetService from '../services/budgetService';
 import categoryService from '../services/categoryService';
 import { analyzeBudget } from '../utils/budgetAiEngine';
@@ -234,6 +235,14 @@ export const Budget = () => {
             <SummaryCard title="Remaining Allocation" amount={plan.totalAllocated - plan.totalSpent} indicator="Budget left to spend" />
             <SummaryCard title="Emergency Reserve" amount={plan.emergencyReserve} indicator="Protected funds" type="blue" />
           </div>
+
+          {/* Module 8A: Personalized Budget Insights */}
+          <PersonalizedInsights
+            pageContext="BUDGET"
+            title="AI Budgeting & Allocation Recommendations"
+            subtitle="Pace alerts, realistic envelope limits, and priority alignment based on actual spending"
+            className="mb-8"
+          />
 
           {(aiData.recommendations.length > 0 || aiData.warnings.length > 0) && (
             <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 p-5 rounded-2xl mb-8 shadow-sm">

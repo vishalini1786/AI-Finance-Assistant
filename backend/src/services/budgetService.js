@@ -56,18 +56,24 @@ async function createBudget(userId, { categoryId, budgetAmount, month, year, pri
   if (!category) throw badRequestError('categoryId does not match an existing category');
 
   const created = await budgetRepository.create({ userId, categoryId, budgetAmount, month, year, priority });
+  const aiInsightService = require('./aiInsightService');
+  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
   return getBudgetById(created.budget_id, userId);
 }
 
 async function updateBudget(budgetId, userId, { budgetAmount, month, year, priority }) {
   const updated = await budgetRepository.update(budgetId, userId, { budgetAmount, month, year, priority });
   if (!updated) throw notFoundError();
+  const aiInsightService = require('./aiInsightService');
+  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
   return getBudgetById(updated.budget_id, userId);
 }
 
 async function deleteBudget(budgetId, userId) {
   const deleted = await budgetRepository.remove(budgetId, userId);
   if (!deleted) throw notFoundError();
+  const aiInsightService = require('./aiInsightService');
+  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
 }
 
 module.exports = { getAllBudgets, getBudgetById, createBudget, updateBudget, deleteBudget };

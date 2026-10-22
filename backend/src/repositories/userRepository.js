@@ -53,6 +53,7 @@ async function updateProfile(userId, fields) {
     'savings_habit',
     'investment_preference',
     'is_onboarded',
+    'timezone',
   ];
 
   const setClauses = [];

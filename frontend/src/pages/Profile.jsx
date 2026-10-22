@@ -19,7 +19,18 @@ const LANGUAGES = [
   { code: 'pa', label: 'Punjabi' },
 ];
 
+function formatTime12(timeStr) {
+  if (!timeStr) return '9:00 PM';
+  const [h, m] = timeStr.split(':');
+  if (h === undefined || m === undefined) return timeStr;
+  const hour = parseInt(h, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${m.padStart(2, '0')} ${ampm}`;
+}
+
 function buildForm(user) {
+  const detectedTz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'Asia/Kolkata';
   return {
     name: user?.name || '',
     phone: user?.phone || '',
@@ -28,7 +39,8 @@ function buildForm(user) {
     preferredLanguage: user?.preferred_language || 'en',
     themePreference: user?.theme_preference || 'light',
     expenseReminderEnabled: user?.expense_reminder_enabled !== undefined ? Boolean(user.expense_reminder_enabled) : true,
-    expenseReminderTime: user?.expense_reminder_time || '21:00',
+    expenseReminderTime: user?.expense_reminder_time ? user.expense_reminder_time.slice(0, 5) : '21:00',
+    timezone: user?.timezone || detectedTz || 'Asia/Kolkata',
     microExpensePromptsEnabled: user?.micro_expense_prompts_enabled !== undefined ? Boolean(user.micro_expense_prompts_enabled) : true,
   };
 }
@@ -82,6 +94,7 @@ export const Profile = () => {
         themePreference: form.themePreference,
         expenseReminderEnabled: form.expenseReminderEnabled,
         expenseReminderTime: form.expenseReminderTime,
+        timezone: form.timezone,
         microExpensePromptsEnabled: form.microExpensePromptsEnabled,
       });
       setThemePreference(form.themePreference);
@@ -254,17 +267,67 @@ export const Profile = () => {
                     />
                   </div>
                   {form.expenseReminderEnabled && (
-                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
-                      <span className="text-slate-600 font-medium">Delivery Time:</span>
-                      <select
-                        value={form.expenseReminderTime}
-                        onChange={(e) => setForm({ ...form, expenseReminderTime: e.target.value })}
-                        className="border border-slate-200 rounded-lg p-1.5 text-xs outline-none bg-white font-semibold"
-                      >
-                        <option value="20:00">8:00 PM</option>
-                        <option value="21:00">9:00 PM</option>
-                        <option value="22:00">10:00 PM</option>
-                      </select>
+                    <div className="pt-3 border-t border-slate-200 dark:border-slate-700/60 space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Reminder Time:
+                          </label>
+                          <span className="px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 text-[11px] font-bold">
+                            {formatTime12(form.expenseReminderTime)}
+                          </span>
+                        </div>
+                        <input
+                          type="time"
+                          value={form.expenseReminderTime}
+                          onChange={(e) => setForm({ ...form, expenseReminderTime: e.target.value })}
+                          className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono font-medium"
+                        />
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-slate-400 font-semibold mr-1">Presets:</span>
+                        {['19:00', '20:00', '21:00', '21:30', '22:00'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setForm({ ...form, expenseReminderTime: preset })}
+                            className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${
+                              form.expenseReminderTime === preset
+                                ? 'bg-sky-500 text-white shadow-xs'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            {formatTime12(preset)}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Timezone Selection */}
+                      <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/40">
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Your Timezone:
+                        </label>
+                        <select
+                          value={form.timezone}
+                          onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+                          className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                        >
+                          <option value="Asia/Kolkata">Asia/Kolkata (IST - India)</option>
+                          <option value="UTC">UTC (Universal Time)</option>
+                          <option value="America/New_York">America/New York (EST/EDT)</option>
+                          <option value="America/Los_Angeles">America/Los Angeles (PST/PDT)</option>
+                          <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+                          <option value="Europe/London">Europe/London (GMT/BST)</option>
+                          <option value="Asia/Dubai">Asia/Dubai (GST - UAE)</option>
+                          <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+                          <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
+                        </select>
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-tight">
+                        FinMan checks for unrecorded expenses at your local time and delivers a check-in alert.
+                      </p>
                     </div>
                   )}
                 </div>

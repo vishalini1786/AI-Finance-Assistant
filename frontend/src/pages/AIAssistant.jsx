@@ -141,17 +141,32 @@ function FormattedContent({ text }) {
 }
 
 export function appendSpeechTranscript(baseText = '', finalSegment = '', interimSegment = '') {
-  const parts = [];
   const cleanBase = (baseText || '').trim();
   const cleanFinal = (finalSegment || '').trim();
   const cleanInterim = (interimSegment || '').trim();
 
-  if (cleanBase) parts.push(cleanBase);
-  if (cleanFinal) parts.push(cleanFinal);
-  if (cleanInterim) parts.push(cleanInterim);
+  let committed = cleanBase;
 
-  return parts.join(' ');
+  if (cleanFinal) {
+    if (!committed) {
+      committed = cleanFinal;
+    } else {
+      const lowerBase = committed.toLowerCase();
+      const lowerFinal = cleanFinal.toLowerCase();
+      // Prevent duplicate repetition if base already ends with the recognized final phrase
+      if (!lowerBase.endsWith(lowerFinal)) {
+        committed = `${committed} ${cleanFinal}`;
+      }
+    }
+  }
+
+  if (cleanInterim) {
+    return committed ? `${committed} ${cleanInterim}` : cleanInterim;
+  }
+
+  return committed;
 }
+
 
 export function getPendingTypeMeta(type) {
   switch (type) {
@@ -293,19 +308,34 @@ export const AIAssistant = () => {
   const recognitionRef = useRef(null);
   const shouldListenRef = useRef(false);
   const baseTextRef = useRef('');
+  const sessionFinalRef = useRef('');
   const inputRef = useRef('');
+  const textareaRef = useRef(null);
+
+  const adjustTextareaHeight = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+  };
 
   useEffect(() => {
     inputRef.current = input;
+    adjustTextareaHeight();
   }, [input]);
 
+
   const [quickPrompts, setQuickPrompts] = useState([
-    'I spent ₹50 on tea today',
-    'Add my salary of ₹10,000',
+    'Based on my onboarding details, what should I focus on first?',
+    'Analyze my spending this month',
+    'How can I save more money based on my current income?',
+    'Am I on track to reach my savings goal?',
+    'Help me plan a realistic budget for next month',
+    'Which expenses should I review first?',
+    'What financial habits should I improve?',
+    'What changed in my financial situation this month?',
     'How much did I spend this month?',
     'Where am I spending the most?',
-    'Can I afford a phone worth ₹25,000?',
-    'What bills are coming up?',
   ]);
 
   const messagesEndRef = useRef(null);
@@ -404,6 +434,7 @@ export const AIAssistant = () => {
         setIsListening(true);
         setSpeechError('');
         baseTextRef.current = inputRef.current.trim();
+        sessionFinalRef.current = '';
       };
 
       recognition.onresult = (event) => {
@@ -411,12 +442,15 @@ export const AIAssistant = () => {
         let interimSegment = '';
         for (let i = 0; i < event.results.length; i++) {
           const res = event.results[i];
+          const transcript = res[0]?.transcript?.trim() || '';
+          if (!transcript) continue;
           if (res.isFinal) {
-            finalSegment += (finalSegment ? ' ' : '') + res[0].transcript.trim();
+            finalSegment += (finalSegment ? ' ' : '') + transcript;
           } else {
-            interimSegment += (interimSegment ? ' ' : '') + res[0].transcript.trim();
+            interimSegment += (interimSegment ? ' ' : '') + transcript;
           }
         }
+        sessionFinalRef.current = finalSegment;
         const updated = appendSpeechTranscript(baseTextRef.current, finalSegment, interimSegment);
         setInput(updated);
       };
@@ -427,7 +461,7 @@ export const AIAssistant = () => {
           setIsListening(false);
           setSpeechError('Microphone permission was denied. Please allow microphone access in your browser settings.');
         } else if (event.error === 'no-speech') {
-          // In continuous mode, no-speech is normal during pauses; keep listening if desired
+          // Normal pause during speaking; keep continuous listening active
         } else if (event.error === 'audio-capture') {
           shouldListenRef.current = false;
           setIsListening(false);
@@ -440,7 +474,17 @@ export const AIAssistant = () => {
       };
 
       recognition.onend = () => {
-        baseTextRef.current = inputRef.current.trim();
+        // Commit final segment of this session into baseTextRef so next session starts cleanly
+        if (sessionFinalRef.current) {
+          const lowerBase = (baseTextRef.current || '').toLowerCase();
+          const lowerFin = sessionFinalRef.current.toLowerCase();
+          if (!lowerBase.endsWith(lowerFin)) {
+            baseTextRef.current = (baseTextRef.current ? baseTextRef.current + ' ' : '') + sessionFinalRef.current.trim();
+          }
+          sessionFinalRef.current = '';
+        }
+        setInput(baseTextRef.current);
+
         // If user desires continued listening, restart across browser silence timeouts
         if (shouldListenRef.current) {
           try {
@@ -488,9 +532,21 @@ export const AIAssistant = () => {
       try {
         recognitionRef.current?.stop();
       } catch {}
+
+      // Finalize text safely without duplication
+      if (sessionFinalRef.current) {
+        const lowerBase = (baseTextRef.current || '').toLowerCase();
+        const lowerFin = sessionFinalRef.current.toLowerCase();
+        if (!lowerBase.endsWith(lowerFin)) {
+          baseTextRef.current = (baseTextRef.current ? baseTextRef.current + ' ' : '') + sessionFinalRef.current.trim();
+        }
+        sessionFinalRef.current = '';
+      }
+      setInput(baseTextRef.current);
     } else {
       shouldListenRef.current = true;
       baseTextRef.current = inputRef.current.trim();
+      sessionFinalRef.current = '';
       try {
         recognitionRef.current?.start();
       } catch (err) {
@@ -502,7 +558,9 @@ export const AIAssistant = () => {
   const handleClearDraft = () => {
     setInput('');
     baseTextRef.current = '';
+    sessionFinalRef.current = '';
   };
+
 
   const handleRemoveBatchItem = (index) => {
     if (!activePending || activePending.type !== 'batch') return;
@@ -1217,29 +1275,37 @@ export const AIAssistant = () => {
               </div>
             )}
 
-            {/* Input with Speech-to-Text Microphone & Language Selector */}
+            {/* Responsive Multiline Chat Textarea with Voice Dictation & Controls */}
             <form
               onSubmit={(event) => {
                 event.preventDefault();
                 handleSend();
               }}
-              className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center gap-2"
+              className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-end gap-2"
             >
-              <input
+              <textarea
+                ref={textareaRef}
+                rows={1}
                 value={input}
                 onChange={(event) => {
                   setInput(event.target.value);
                   baseTextRef.current = event.target.value;
                 }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    handleSend();
+                  }
+                }}
                 placeholder={
                   isListening
                     ? 'Listening... speak clearly now (e.g. "I spent ₹50 on tea")'
-                    : 'Ask a question or say "I spent ₹50 on tea" / "Add my salary of ₹10,000"...'
+                    : 'Ask a question or dictate (Press Enter to send, Shift+Enter for new line)...'
                 }
                 disabled={isTyping}
-                className={`flex-1 border rounded-xl px-4 py-2.5 text-xs outline-none transition-all ${
+                className={`flex-1 border rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all resize-none max-h-36 overflow-y-auto leading-relaxed whitespace-pre-wrap break-words ${
                   isListening
-                    ? 'border-rose-400 ring-2 ring-rose-400/30 bg-rose-50/30 text-rose-900 font-medium'
+                    ? 'border-rose-400 ring-2 ring-rose-400/30 bg-rose-50/30 dark:bg-rose-950/40 text-rose-900 dark:text-rose-100 font-medium'
                     : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-finman-blue focus:ring-1 focus:ring-finman-blue'
                 }`}
               />
@@ -1262,7 +1328,7 @@ export const AIAssistant = () => {
                 onChange={(e) => handleSpeechLangChange(e.target.value)}
                 disabled={isListening}
                 title="Voice Language Locale"
-                className="text-[11px] font-semibold px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none shrink-0 cursor-pointer disabled:opacity-60"
+                className="text-[11px] font-semibold px-2 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none shrink-0 cursor-pointer disabled:opacity-60 hidden sm:block"
               >
                 <option value="en-IN">EN (IN)</option>
                 <option value="en-US">EN (US)</option>
@@ -1292,9 +1358,10 @@ export const AIAssistant = () => {
                 className="bg-finman-blue hover:bg-blue-600 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors shadow-sm shrink-0 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>Send</span>
+                <span className="hidden xs:inline">Send</span>
               </button>
             </form>
+
           </div>
 
           {/* Side panel */}

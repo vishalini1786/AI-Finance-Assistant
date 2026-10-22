@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { SummaryCard } from '../components/common/SummaryCard';
+import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 import incomeService from '../services/incomeService';
 import documentService, { DOCUMENT_UPLOAD_ACCEPT } from '../services/documentService';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -407,6 +408,14 @@ export const Income = () => {
           type="orange"
         />
       </div>
+
+      {/* Module 8A: Personalized Income Insights */}
+      <PersonalizedInsights
+        pageContext="INCOME"
+        title="Income Analysis & Cash Flow Planning"
+        subtitle="Insights on income stability, source concentration, and profile alignment"
+        className="mb-8"
+      />
 
       {/* Filters & Search Toolbar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs mb-6 flex flex-col sm:flex-row gap-3 items-center justify-between">

@@ -11,6 +11,7 @@ const {
   listUsers,
   updateUserRole,
   removeUser,
+  bulkRemoveUsers,
   systemHealth,
   documentMonitor,
   aiMonitoring,
@@ -31,6 +32,7 @@ router.get('/overview', overview);
 
 // ── User Management ───────────────────────────────────────────────
 router.get('/users',                listUsers);
+router.delete('/users/bulk',         bulkRemoveUsers);
 router.patch('/users/:userId/role', updateUserRole);
 router.delete('/users/:userId',     removeUser);
 

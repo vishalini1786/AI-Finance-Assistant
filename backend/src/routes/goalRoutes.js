@@ -11,4 +11,6 @@ router.post('/', validate(validateGoal), goalController.createGoal);
 router.get('/:id', goalController.getGoal);
 router.put('/:id', validate(validateGoal), goalController.updateGoal);
 router.delete('/:id', goalController.deleteGoal);
+router.post('/:id/contributions', goalController.recordContribution);
+router.get('/:id/contributions', goalController.getContributions);
 module.exports = router;

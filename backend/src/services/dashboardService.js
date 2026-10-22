@@ -212,25 +212,31 @@ async function getMonthlyTrends(userId, queryParams = {}) {
 }
 
 async function getAssistantContext(userId) {
-  const [user, summary, currentMonth, transactions, categoryExpenses, monthlyTrends] = await Promise.all([
+  const { buildFinancialProfile } = require('./financialProfileService');
+  const [user, summary, currentMonth, transactions, categoryExpenses, monthlyTrends, financialProfile] = await Promise.all([
     userService.getProfile(userId),
     getSummary(userId),
     dashboardRepository.getCurrentMonthTotals(userId),
     getRecentTransactions(userId),
     getCategoryExpenses(userId),
     getMonthlyTrends(userId),
+    buildFinancialProfile(userId).catch(() => null),
   ]);
 
   return {
     user: {
       name: user.name,
       preferredLanguage: user.preferred_language,
+      occupation: user.occupation,
+      monthlyIncome: user.monthly_income,
+      isOnboarded: user.is_onboarded,
     },
     summary,
     currentMonth,
     recentTransactions: transactions,
     categoryExpenses,
     monthlyTrends,
+    financialProfile,
   };
 }
 

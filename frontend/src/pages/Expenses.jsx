@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { SummaryCard } from '../components/common/SummaryCard';
+import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 import expenseService from '../services/expenseService';
 import incomeService from '../services/incomeService';
 import documentService, { DOCUMENT_UPLOAD_ACCEPT } from '../services/documentService';
@@ -508,6 +509,16 @@ export const Expenses = () => {
             <span>{onlyMicroSpending ? 'Showing Only ≤ ₹250' : 'Filter Micro-Purchases (≤ ₹250)'}</span>
           </button>
         </div>
+      )}
+
+      {/* Module 8A: Personalized Expense Insights */}
+      {activeTab === 'expenses' && (
+        <PersonalizedInsights
+          pageContext="EXPENSES"
+          title="Expense Analysis & Spending Optimization"
+          subtitle="Contextual category observations and spending pace alerts based on your habits"
+          className="mb-6"
+        />
       )}
 
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4 mb-6">

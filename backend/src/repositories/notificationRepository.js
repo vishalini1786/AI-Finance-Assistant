@@ -21,16 +21,16 @@ async function markRead(notificationId, userId) {
   return result.rows[0] || null;
 }
 
-async function createIfMissing({ userId, title, message, notificationType }) {
+async function createIfMissing({ userId, title, message, notificationType, link }) {
   const result = await db.query(
-    `INSERT INTO notifications (user_id, title, message, notification_type)
-     SELECT $1::int, $2::text, $3::text, $4::varchar
+    `INSERT INTO notifications (user_id, title, message, notification_type, link)
+     SELECT $1::int, $2::text, $3::text, $4::varchar, $5::varchar
      WHERE NOT EXISTS (
        SELECT 1 FROM notifications
        WHERE user_id = $1::int AND title = $2::text AND message = $3::text AND is_read = FALSE
      )
      RETURNING *`,
-    [userId, title, message, notificationType || 'GENERAL']
+    [userId, title, message, notificationType || 'GENERAL', link || null]
   );
   return result.rows[0] || null;
 }

@@ -27,6 +27,7 @@ async function updateProfile(userId, updates) {
   if (updates.expenseReminderEnabled !== undefined) fields.expense_reminder_enabled = updates.expenseReminderEnabled;
   if (updates.expenseReminderTime !== undefined) fields.expense_reminder_time = updates.expenseReminderTime;
   if (updates.microExpensePromptsEnabled !== undefined) fields.micro_expense_prompts_enabled = updates.microExpensePromptsEnabled;
+  if (updates.timezone !== undefined) fields.timezone = updates.timezone;
 
   const updatedUser = await userRepository.updateProfile(userId, fields);
   if (!updatedUser) {
@@ -58,6 +59,7 @@ async function completeOnboarding(userId, onboardingData) {
     expenseReminderEnabled,
     expenseReminderTime,
     microExpensePromptsEnabled,
+    timezone,
   } = onboardingData;
 
   // Validate JSONB array fields to ensure they are arrays before inserting
@@ -77,6 +79,7 @@ async function completeOnboarding(userId, onboardingData) {
     expense_reminder_enabled:     expenseReminderEnabled !== undefined ? Boolean(expenseReminderEnabled) : true,
     expense_reminder_time:        expenseReminderTime || '21:00',
     micro_expense_prompts_enabled: microExpensePromptsEnabled !== undefined ? Boolean(microExpensePromptsEnabled) : true,
+    timezone:                     timezone || 'Asia/Kolkata',
     is_onboarded:                 true,
   };
 
@@ -87,14 +90,17 @@ async function completeOnboarding(userId, onboardingData) {
     err.expose = true;
     throw err;
   }
+  const aiInsightService = require('./aiInsightService');
+  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
   return toSafeUser(updatedUser);
 }
 
-async function updateExpensePreferences(userId, { expenseReminderEnabled, expenseReminderTime, microExpensePromptsEnabled }) {
+async function updateExpensePreferences(userId, { expenseReminderEnabled, expenseReminderTime, microExpensePromptsEnabled, timezone }) {
   const fields = {};
   if (expenseReminderEnabled !== undefined) fields.expense_reminder_enabled = expenseReminderEnabled;
   if (expenseReminderTime !== undefined) fields.expense_reminder_time = expenseReminderTime || null;
   if (microExpensePromptsEnabled !== undefined) fields.micro_expense_prompts_enabled = microExpensePromptsEnabled;
+  if (timezone !== undefined) fields.timezone = timezone || 'Asia/Kolkata';
   const updatedUser = await userRepository.updateProfile(userId, fields);
   if (!updatedUser) {
     const err = new Error('User not found');

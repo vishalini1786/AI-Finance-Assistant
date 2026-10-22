@@ -41,9 +41,34 @@ async function confirmAiTransaction(pendingTransaction) {
   return res.data.data;
 }
 
-async function getInsights() {
-  const res = await api.get('/dashboard/insights');
-  return res.data.data.insights;
+async function getInsights(params = {}) {
+  const res = await api.get('/dashboard/insights', { params });
+  return res.data.data?.insights || [];
+}
+
+async function refreshInsights() {
+  const res = await api.post('/dashboard/insights/refresh');
+  return res.data.data?.insights || [];
+}
+
+async function dismissInsight(id) {
+  const res = await api.patch(`/dashboard/insights/${id}/dismiss`);
+  return res.data.data;
+}
+
+async function markInsightRead(id) {
+  const res = await api.patch(`/dashboard/insights/${id}/read`);
+  return res.data.data;
+}
+
+async function submitInsightFeedback(id, feedback) {
+  const res = await api.post(`/dashboard/insights/${id}/feedback`, { feedback });
+  return res.data.data;
+}
+
+async function getFinancialProfile() {
+  const res = await api.get('/dashboard/financial-profile');
+  return res.data.data?.profile || null;
 }
 
 export default {
@@ -55,5 +80,10 @@ export default {
   sendChatMessage,
   confirmAiTransaction,
   getInsights,
+  refreshInsights,
+  dismissInsight,
+  markInsightRead,
+  submitInsightFeedback,
+  getFinancialProfile,
 };
 

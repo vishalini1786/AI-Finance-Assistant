@@ -27,6 +27,12 @@ const adminService = {
     return res.data.data;
   },
 
+  bulkDeleteUsers: async (userIds) => {
+    const res = await api.delete('/admin/users/bulk', { data: { userIds } });
+    return res.data.data;
+  },
+
+
   // ── System Health ────────────────────────────────────────────────
   getSystemHealth: async () => {
     const res = await api.get('/admin/health');
