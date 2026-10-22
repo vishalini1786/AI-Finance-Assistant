@@ -351,7 +351,128 @@ class OCRUploadTests(unittest.TestCase):
         self.assertEqual(res_cash["paymentMethod"], "Cash")
         self.assertEqual(res_card["paymentMethod"], "Credit Card")
 
+    def test_ocr_diagnostics_endpoint(self):
+        diag = app.get_tesseract_diagnostics()
+        self.assertIn("status", diag)
+        self.assertIn("engine_available", diag)
+        self.assertIn("supported_formats", diag)
+        self.assertTrue(diag["pdf_text_extraction_available"])
+        if app.is_tesseract_available():
+            self.assertTrue(diag["engine_available"])
+            self.assertTrue(diag["is_english_available"])
+            self.assertIn("eng", diag["available_languages"])
+
+    def test_growinvest_equity_contract_note_fixture(self):
+        contract_text = (
+            "GrowInvest Securities Pvt. Ltd.\n"
+            "Member: NSE | BSE | Depository Participant\n"
+            "SEBI Registration No: INZ000123456\n"
+            "CONTRACT NOTE - Equity Trading\n"
+            "Invoice / Contract Note No : GI20261020A45873\n"
+            "Trade Date : 20-10-2026\n"
+            "Settlement Date: 22-10-2026\n"
+            "Symbol : RELIANCE\n"
+            "Scrip Name : RELIANCE INDUSTRIES LTD\n"
+            "Transaction Type: SELL\n"
+            "Description Quantity Price (Rs) Total (Rs)\n"
+            "Sell Value 10 2,850.00 | 28,500.00\n"
+            "Brokerage : 50.00\n"
+            "STT (Securities Transaction Tax) : 28.50\n"
+            "Exchange Transaction Charges : 8.45\n"
+            "SEBI Turnover Fees : 0.57\n"
+            "Stamp Duty : 1.00\n"
+            "GST (18% on Brokerage + Transaction Charges) : 10.52\n"
+            "Total Charges : 99.04\n"
+            "Net Amount (Credited to Your Account) : 28,400.96\n"
+            "Amount Credited : Rs 28,400.96\n"
+            "Credit Date : 22-10-2026\n"
+            "Credit To : Bank Account (HDFC Bank)\n"
+            "Narration : RELIANCE - EQUITY SELL - Contract Note GI20261020A45873"
+        )
+        result = asyncio.run(app.ocr_receipt(make_upload(
+            "contract_note.pdf", "application/pdf", make_pdf(contract_text)
+        )))
+        self.assertEqual(result["documentType"], "EQUITY_CONTRACT_NOTE")
+        self.assertEqual(result["transactionType"], "INCOME")
+        self.assertEqual(result["amount"], 28400.96, "Net credited proceeds must be ₹28,400.96, NOT ₹550")
+        self.assertNotEqual(result["amount"], 550.0, "Must NEVER extract ₹550 for the Reliance contract note")
+        self.assertEqual(result["date"], "2026-10-20")
+        self.assertEqual(result["merchant"], "GrowInvest Securities Pvt. Ltd.")
+        self.assertEqual(result["suggestedCategory"], "Investment")
+        self.assertIn("RELIANCE", result["description"])
+
+        cn = result.get("contractNote", {})
+        self.assertEqual(cn.get("symbol"), "RELIANCE")
+        self.assertEqual(cn.get("quantity"), 10)
+        self.assertEqual(cn.get("pricePerShare"), 2850.0)
+        self.assertEqual(cn.get("grossSaleValue"), 28500.0)
+        self.assertEqual(cn.get("totalCharges"), 99.04)
+        self.assertEqual(cn.get("netProceeds"), 28400.96)
+        self.assertTrue(cn.get("arithmeticVerified"), "28,500.00 - 99.04 must equal 28,400.96")
+        self.assertIn("profit/loss is unknown", cn.get("profitNote", "").lower())
+
+    def test_actual_uploaded_contract_note_image(self):
+        from pathlib import Path
+        img_path = Path("backend/uploads/1792599774930-GrowInvest_Equity_Sell_Contract_Note.png")
+        if not img_path.is_file() or not app.is_tesseract_available():
+            self.skipTest("Contract note test image or Tesseract not available")
+        with open(img_path, "rb") as f:
+            content = f.read()
+        result = asyncio.run(app.ocr_receipt(make_upload(
+            "GrowInvest_Equity_Sell_Contract_Note.png", "image/png", content
+        )))
+        self.assertEqual(result["documentType"], "EQUITY_CONTRACT_NOTE")
+        self.assertEqual(result["transactionType"], "INCOME")
+        self.assertEqual(result["amount"], 28400.96)
+        self.assertNotEqual(result["amount"], 550.0)
+        self.assertEqual(result["date"], "2026-10-20")
+        self.assertEqual(result["merchant"], "GrowInvest Securities Pvt. Ltd.")
+        cn = result.get("contractNote", {})
+        self.assertEqual(cn.get("symbol"), "RELIANCE")
+        self.assertEqual(cn.get("grossSaleValue"), 28500.0)
+        self.assertEqual(cn.get("totalCharges"), 99.04)
+        self.assertEqual(cn.get("netProceeds"), 28400.96)
+        self.assertTrue(cn.get("arithmeticVerified"))
+
+    def test_dividend_statement_extraction(self):
+        div_text = (
+            "INFOSYS LIMITED\n"
+            "DIVIDEND WARRANT / ADVICE\n"
+            "Date: 15-10-2026\n"
+            "Interim Dividend for FY 2026-27\n"
+            "Gross Dividend : Rs. 5,000.00\n"
+            "TDS Deducted (10%) : Rs. 500.00\n"
+            "Net Dividend Credited : Rs. 4,500.00\n"
+            "Account Credited: HDFC Bank"
+        )
+        result = asyncio.run(app.ocr_receipt(make_upload(
+            "dividend.pdf", "application/pdf", make_pdf(div_text)
+        )))
+        self.assertEqual(result["documentType"], "DIVIDEND_STATEMENT")
+        self.assertEqual(result["transactionType"], "INCOME")
+        self.assertEqual(result["amount"], 4500.0)
+        self.assertEqual(result["suggestedCategory"], "Investment")
+
+    def test_interest_statement_extraction(self):
+        int_text = (
+            "STATE BANK OF INDIA\n"
+            "INTEREST CERTIFICATE / STATEMENT\n"
+            "Date: 30-09-2026\n"
+            "Account Number: 309812739102\n"
+            "Account Balance: Rs. 1,50,000.00\n"
+            "Interest Credited for Q2: Rs. 1,425.00\n"
+            "TDS on Interest: Rs. 0.00"
+        )
+        result = asyncio.run(app.ocr_receipt(make_upload(
+            "interest.pdf", "application/pdf", make_pdf(int_text)
+        )))
+        self.assertEqual(result["documentType"], "INTEREST_STATEMENT")
+        self.assertEqual(result["transactionType"], "INCOME")
+        self.assertEqual(result["amount"], 1425.0, "Must extract interest earned, not account balance 1,50,000")
+        self.assertNotEqual(result["amount"], 150000.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
