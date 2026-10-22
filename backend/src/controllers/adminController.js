@@ -147,19 +147,16 @@ async function documentMonitor(req, res) {
   }
 }
 
-// ── AI / Service Monitoring (stub, expandable) ────────────────────
+const geminiService = require('../services/geminiService');
+
+// ── AI / Service Monitoring ──────────────────────────────────────────
 
 async function aiMonitoring(req, res) {
   try {
-    // Returns a stub payload. Extend with real AI service metrics
-    // (e.g., Gemini API call counts from a log table) as needed.
+    const diag = geminiService.getGeminiDiagnostics();
     return sendSuccess(res, {
       message: 'AI monitoring data fetched',
-      data: {
-        provider: 'Google Gemini',
-        status:   'operational',
-        note:     'Detailed call metrics require an ai_call_log table.',
-      },
+      data: diag,
     });
   } catch (err) {
     return sendError(res, { message: 'Failed to fetch AI monitoring data', error: err.message });

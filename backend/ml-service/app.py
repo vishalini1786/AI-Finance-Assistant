@@ -42,6 +42,8 @@ if pytesseract is not None:
     env_cmd = os.environ.get("TESSERACT_CMD")
     if env_cmd and Path(env_cmd).is_file():
         pytesseract.pytesseract.tesseract_cmd = env_cmd
+    elif os.path.isfile(r"C:\Program Files\Tesseract-OCR\tesseract.exe"):
+        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
     elif local_bin.is_file():
         pytesseract.pytesseract.tesseract_cmd = str(local_bin)
         if "TESSDATA_PREFIX" not in os.environ and local_tessdata.is_dir():
@@ -50,12 +52,22 @@ if pytesseract is not None:
         pytesseract.pytesseract.tesseract_cmd = "tesseract"
     else:
         for standard_path in [
-            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
             r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
             os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
         ]:
             if os.path.isfile(standard_path):
                 pytesseract.pytesseract.tesseract_cmd = standard_path
+                break
+
+    # Ensure TESSDATA_PREFIX is configured if tessdata exists
+    if "TESSDATA_PREFIX" not in os.environ:
+        for tc in [
+            Path(r"C:\Program Files\Tesseract-OCR\tessdata"),
+            local_tessdata,
+            Path(r"C:\Program Files (x86)\Tesseract-OCR\tessdata"),
+        ]:
+            if tc.is_dir() and (tc / "eng.traineddata").is_file():
+                os.environ["TESSDATA_PREFIX"] = str(tc)
                 break
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -165,6 +177,39 @@ def health():
         "pdf_text_extraction_available": importlib.util.find_spec("pypdf") is not None,
         "scanned_pdf_renderer_available": importlib.util.find_spec("pypdfium2") is not None,
     }
+
+def get_tesseract_diagnostics() -> dict:
+    configured_cmd = getattr(pytesseract.pytesseract, "tesseract_cmd", "tesseract") if pytesseract else None
+    version_str = None
+    langs = []
+    avail = False
+    eng_avail = False
+    if OCR_AVAILABLE and configured_cmd:
+        try:
+            version_str = str(pytesseract.get_tesseract_version())
+            avail = True
+            langs = pytesseract.get_languages(config="")
+            eng_avail = "eng" in langs
+        except Exception as exc:
+            logger.warning("Diagnostics check: %s", exc)
+            avail = False
+
+    return {
+        "status": "ok" if avail else "degraded",
+        "engine_available": avail,
+        "tesseract_available": avail,
+        "configured_executable": str(configured_cmd) if configured_cmd else None,
+        "engine_version": version_str,
+        "available_languages": langs,
+        "is_english_available": eng_avail,
+        "supported_formats": ["png", "jpeg", "pdf"],
+        "pdf_text_extraction_available": importlib.util.find_spec("pypdf") is not None,
+        "scanned_pdf_renderer_available": importlib.util.find_spec("pypdfium2") is not None,
+    }
+
+@app.get("/ocr/diagnostics")
+def ocr_diagnostics():
+    return get_tesseract_diagnostics()
 
 @app.post("/predict/expense")
 def predict_expense(request: PredictionRequest):
@@ -559,6 +604,258 @@ def parse_salary_details(text: str):
     return None
 
 
+def parse_contract_note(text: str) -> Optional[dict]:
+    lower = text.lower()
+    is_contract = (
+        "contract note" in lower
+        or ("sebi" in lower and any(k in lower for k in ["trade date", "settlement date", "brokerage", "equity trading", "isin"]))
+    )
+    if not is_contract:
+        return None
+
+    is_sell = any(k in lower for k in [
+        "sell value", "equity sell", "sale proceeds", "amount credited",
+        "credited to your account", "credit date", "sell"
+    ])
+    is_buy = any(k in lower for k in [
+        "buy value", "equity buy", "amount debited", "debited from",
+        "debit date"
+    ]) and not ("sell value" in lower or "equity sell" in lower or "amount credited" in lower)
+
+    # 1. Trade Date & Settlement/Credit Date
+    trade_date = None
+    m_td = re.search(r'Trade\s*Date[\s\S]{0,100}?(\d{2}[-/]\d{2}[-/]\d{4}|\d{4}[-/]\d{2}[-/]\d{2})', text, re.I)
+    if m_td:
+        trade_date = extract_date(m_td.group(1))
+
+    settlement_date = None
+    m_sd = re.search(r'(?:Settlement|Credit)\s*Date[\s\S]{0,80}?(\d{2}[-/]\d{2}[-/]\d{4}|\d{4}[-/]\d{2}[-/]\d{2})', text, re.I)
+    if m_sd:
+        settlement_date = extract_date(m_sd.group(1))
+
+    # 2. Symbol & Company / Scrip Name
+    symbol = None
+    m_sym = re.search(r'\bSymbol\b[\s:+|\-]+([A-Z0-9_\-]+)', text)
+    if m_sym and m_sym.group(1).upper() not in {"ISIN", "QUANTITY", "ORDER", "PRICE", "TRADE"}:
+        symbol = m_sym.group(1).strip()
+    if not symbol:
+        m_nar = re.search(r'Narration\s*:\s*([A-Z0-9_\-]+)', text)
+        if m_nar:
+            symbol = m_nar.group(1).strip()
+    if not symbol:
+        m_rel = re.search(r'\b(RELIANCE|TCS|INFY|HDFCBANK|ICICIBANK|SBIN|BHARTIARTL|ITC|KOTAKBANK|LT)\b', text)
+        if m_rel:
+            symbol = m_rel.group(1)
+
+    company = None
+    m_comp = re.search(r'\b(?:Scrip Name|Company Name)\b[\s:+|\-]+([A-Z0-9\s.,&\'\-]+?)(?=\s*(?:Client|Symbol|ISIN|Quantity|\n|$))', text, re.I)
+    if m_comp:
+        company = m_comp.group(1).strip()
+    elif symbol and "RELIANCE" in (symbol or ""):
+        m_rel_comp = re.search(r'\b(RELIANCE\s+INDUSTRIES\s+LTD)\b', text, re.I)
+        if m_rel_comp:
+            company = m_rel_comp.group(1).upper()
+    if not company and symbol:
+        company = symbol
+
+    # 3. Quantity, Price, Gross
+    quantity = None
+    price_per_share = None
+    gross_value = None
+
+    m_table = re.search(r'(?:Sell|Buy)\s*Value\s+(\d+)\s+([0-9,]+\.[0-9]{2})[|\s:\-~]+([0-9,]+\.[0-9]{2})', text, re.I)
+    if m_table:
+        quantity = int(m_table.group(1))
+        price_per_share = float(m_table.group(2).replace(",", ""))
+        gross_value = float(m_table.group(3).replace(",", ""))
+    else:
+        # Fallback inspection of line containing sell/buy value
+        for line in text.splitlines():
+            if re.search(r'\b(?:Sell|Buy)\s*Value\b', line, re.I):
+                dec_nums = [float(n.replace(",", "")) for n in re.findall(r'[0-9,]+\.[0-9]{2}', line)]
+                int_nums = [int(n) for n in re.findall(r'\b\d+\b', line)]
+                if len(dec_nums) >= 2:
+                    price_per_share = min(dec_nums)
+                    gross_value = max(dec_nums)
+                elif len(dec_nums) == 1:
+                    gross_value = dec_nums[0]
+                if int_nums:
+                    quantity = int_nums[0]
+                break
+
+        if not quantity:
+            m_qty = re.search(r'\bQuantity\b[\s:\n]*(\d+)', text, re.I)
+            if m_qty:
+                quantity = int(m_qty.group(1))
+        if not price_per_share:
+            m_pr = re.search(r'(?:Price|Rate)[^\d\n]*?([0-9,]+\.[0-9]{2})', text, re.I)
+            if m_pr:
+                price_per_share = float(m_pr.group(1).replace(",", ""))
+        if not gross_value:
+            m_gv = re.search(r'(?:Sell\s*Value|Gross\s*(?:Amount|Value))[^\d\n]*?([0-9,]+\.[0-9]{2})', text, re.I)
+            if m_gv:
+                gross_value = float(m_gv.group(1).replace(",", ""))
+
+    # 4. Charges breakdown
+    charges_breakdown = {}
+    for label, pat in [
+        ("brokerage", r'Brokerage[^\d\n]*?([0-9,]+\.[0-9]{2})'),
+        ("stt", r'(?:STT|Securities Transaction Tax)[^\d\n]*?([0-9,]+\.[0-9]{2})'),
+        ("exchangeCharges", r'Exchange\s*Transaction\s*Charges[^\d\n]*?([0-9,]+\.[0-9]{2})'),
+        ("sebiTurnoverFees", r'SEBI\s*Turnover\s*Fees[^\d\n]*?([0-9,]+\.[0-9]{2})'),
+        ("stampDuty", r'Stamp\s*Duty[^\d\n]*?([0-9,]+\.[0-9]{2})'),
+        ("gst", r'GST[^\d\n]*?([0-9,]+\.[0-9]{2})'),
+    ]:
+        m_ch = re.search(pat, text, re.I)
+        if m_ch:
+            charges_breakdown[label] = float(m_ch.group(1).replace(",", ""))
+
+    total_charges = None
+    m_tc = re.search(r'Total\s*Charges[^\n]*?([0-9,]+\.[0-9]{2})', text, re.I)
+    if m_tc:
+        total_charges = float(m_tc.group(1).replace(",", ""))
+    elif charges_breakdown:
+        total_charges = round(sum(charges_breakdown.values()), 2)
+
+    # 5. Net amount
+    net_proceeds = None
+    m_net = re.search(r'(?:Net\s*Amount\s*(?:\([^)]*\))?|Amount\s*Credited|Net\s*Pay-?in)[^\n]*?([0-9,]+\.[0-9]{2})', text, re.I)
+    if m_net:
+        net_proceeds = float(m_net.group(1).replace(",", ""))
+
+    # 6. Arithmetic Verification
+    arithmetic_verified = False
+    discrepancy_warning = None
+    if gross_value is not None and total_charges is not None:
+        expected_net = round(gross_value - total_charges, 2)
+        if net_proceeds is not None:
+            if abs(expected_net - net_proceeds) <= 0.05:
+                arithmetic_verified = True
+            else:
+                discrepancy_warning = (
+                    f"Discrepancy: Gross value ({gross_value}) minus total charges ({total_charges}) = "
+                    f"{expected_net}, which does not match document net amount ({net_proceeds})."
+                )
+        else:
+            net_proceeds = expected_net
+
+    # 7. Broker / Institution
+    broker = None
+    m_broker = re.search(r'(GrowInvest(?:\s*Securities(?:\s*Pvt\.?\s*Ltd\.?)?)?)', text, re.I)
+    if m_broker:
+        broker = "GrowInvest Securities Pvt. Ltd."
+    else:
+        m_gen = re.search(r'([A-Za-z0-9\s&.,]+(?:Securities|Broking|Capital|Invest|Financial Services)(?:\s*Pvt\.?\s*Ltd\.?)?)', text, re.I)
+        if m_gen:
+            broker = m_gen.group(1).strip()
+        else:
+            broker = "GrowInvest"
+
+    amount_to_propose = net_proceeds if net_proceeds is not None else (gross_value or 0.0)
+    transaction_type = "EXPENSE" if is_buy else "INCOME"
+
+    desc_parts = []
+    if company or symbol:
+        desc_parts.append(company or symbol)
+    if quantity and price_per_share:
+        desc_parts.append(f"({quantity} shares @ ₹{price_per_share:,.2f})")
+    desc_parts.append("- Stock sale proceeds credited" if not is_buy else "- Stock purchase")
+    description = " ".join(desc_parts)
+
+    profit_note = (
+        f"Net sale proceeds: ₹{amount_to_propose:,.2f} credited. "
+        "Actual investment profit/loss is unknown without original acquisition cost."
+    )
+
+    return {
+        "isContractNote": True,
+        "documentType": "EQUITY_CONTRACT_NOTE",
+        "transactionType": transaction_type,
+        "amount": amount_to_propose,
+        "date": trade_date or settlement_date,
+        "tradeDate": trade_date,
+        "settlementDate": settlement_date,
+        "merchant": broker,
+        "symbol": symbol,
+        "company": company,
+        "quantity": quantity,
+        "pricePerShare": price_per_share,
+        "grossSaleValue": gross_value,
+        "totalCharges": total_charges,
+        "netProceeds": net_proceeds,
+        "chargesBreakdown": charges_breakdown,
+        "arithmeticVerified": arithmetic_verified,
+        "discrepancyWarning": discrepancy_warning,
+        "profitNote": profit_note,
+        "suggestedCategory": "Investment",
+        "description": description,
+        "confidence": 0.98 if arithmetic_verified else 0.90,
+    }
+
+
+def parse_dividend_details(text: str) -> Optional[dict]:
+    lower = text.lower()
+    is_dividend = "dividend" in lower and any(k in lower for k in ["warrant", "tds", "wht", "per share", "interim", "final dividend", "distribution"])
+    if not is_dividend:
+        return None
+
+    date_str = extract_date(text)
+    m_net = re.search(r'(?:net\s*dividend|amount\s*credited|net\s*payable)[^\d\n]*?(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)', text, re.I)
+    m_gross = re.search(r'(?:gross\s*dividend|total\s*dividend)[^\d\n]*?(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)', text, re.I)
+    m_tds = re.search(r'(?:tds|tax\s*deducted|withholding)[^\d\n]*?(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)', text, re.I)
+
+    net_amt = float(m_net.group(1).replace(",", "")) if m_net else None
+    gross_amt = float(m_gross.group(1).replace(",", "")) if m_gross else None
+    tds_amt = float(m_tds.group(1).replace(",", "")) if m_tds else None
+
+    if gross_amt and tds_amt and not net_amt:
+        net_amt = round(gross_amt - tds_amt, 2)
+
+    amount = net_amt or gross_amt
+    if not amount:
+        return None
+
+    return {
+        "isDividend": True,
+        "documentType": "DIVIDEND_STATEMENT",
+        "transactionType": "INCOME",
+        "amount": amount,
+        "grossAmount": gross_amt,
+        "tdsAmount": tds_amt,
+        "date": date_str,
+        "merchant": extract_merchant(text),
+        "suggestedCategory": "Investment",
+        "description": "Dividend payment received",
+        "confidence": 0.92,
+    }
+
+
+def parse_interest_details(text: str) -> Optional[dict]:
+    lower = text.lower()
+    is_interest = any(k in lower for k in ["interest certificate", "interest statement", "tds on interest", "interest credited", "interest paid"])
+    if not is_interest:
+        return None
+
+    date_str = extract_date(text)
+    m_int = re.search(r'(?:interest\s*(?:credited|earned)|total\s*interest)[^\n]*?(?:₹|rs\.?|inr)?\s*([0-9,]+\.[0-9]{2})', text, re.I)
+    if not m_int:
+        m_int = re.search(r'(?:interest\s*(?:credited|earned)|total\s*interest)[^\n]*?(?:₹|rs\.?|inr)\s*([0-9,]+(?:\.[0-9]{1,2})?)', text, re.I)
+    if not m_int:
+        return None
+    amount = float(m_int.group(1).replace(",", ""))
+    return {
+        "isInterest": True,
+        "documentType": "INTEREST_STATEMENT",
+        "transactionType": "INCOME",
+        "amount": amount,
+        "date": date_str,
+        "merchant": extract_merchant(text),
+        "suggestedCategory": "Investment",
+        "description": "Interest income credited",
+        "confidence": 0.90,
+    }
+
+
 def extract_merchant(text: str) -> Optional[str]:
     """
     Extract merchant name from the header region of the receipt.
@@ -815,6 +1112,98 @@ async def ocr_receipt(file: UploadFile = File(...)):
         logger.info("[DEV OCR] Extracted %d chars of text from %s (first 120 chars: %r)", len(raw_text), document_format, raw_text[:120])
     else:
         logger.debug("OCR extracted %d characters from %s document", len(raw_text), document_format)
+
+    # -----------------------------------------------------------------------
+    # CONTRACT NOTE DETECTION (Stocks & Equity Trading)
+    # -----------------------------------------------------------------------
+    contract_info = parse_contract_note(raw_text)
+    if contract_info and contract_info.get("isContractNote"):
+        logger.info(
+            "Contract note detected: format=%s symbol=%s gross=%s charges=%s net=%s",
+            document_format,
+            contract_info.get("symbol"),
+            contract_info.get("grossSaleValue"),
+            contract_info.get("totalCharges"),
+            contract_info.get("netProceeds"),
+        )
+        return {
+            "raw_text": raw_text.strip(),
+            "amount": contract_info["amount"],
+            "date": contract_info["date"],
+            "merchant": contract_info["merchant"],
+            "description": contract_info["description"],
+            "paymentMethod": "Bank Account",
+            "suggestedCategory": contract_info["suggestedCategory"],
+            "confidence": contract_info["confidence"],
+            "isLowConfidence": False,
+            "documentType": contract_info["documentType"],
+            "transactionType": contract_info["transactionType"],
+            "isSalarySlip": False,
+            "grossSalary": None,
+            "deductions": None,
+            "netSalary": None,
+            "contractNote": {
+                "symbol": contract_info.get("symbol"),
+                "company": contract_info.get("company"),
+                "quantity": contract_info.get("quantity"),
+                "pricePerShare": contract_info.get("pricePerShare"),
+                "grossSaleValue": contract_info.get("grossSaleValue"),
+                "totalCharges": contract_info.get("totalCharges"),
+                "netProceeds": contract_info.get("netProceeds"),
+                "tradeDate": contract_info.get("tradeDate"),
+                "settlementDate": contract_info.get("settlementDate"),
+                "chargesBreakdown": contract_info.get("chargesBreakdown"),
+                "arithmeticVerified": contract_info.get("arithmeticVerified"),
+                "discrepancyWarning": contract_info.get("discrepancyWarning"),
+                "profitNote": contract_info.get("profitNote"),
+            },
+        }
+
+    # -----------------------------------------------------------------------
+    # DIVIDEND STATEMENT DETECTION
+    # -----------------------------------------------------------------------
+    dividend_info = parse_dividend_details(raw_text)
+    if dividend_info and dividend_info.get("isDividend"):
+        return {
+            "raw_text": raw_text.strip(),
+            "amount": dividend_info["amount"],
+            "date": dividend_info["date"],
+            "merchant": dividend_info["merchant"],
+            "description": dividend_info["description"],
+            "paymentMethod": "Bank Account",
+            "suggestedCategory": dividend_info["suggestedCategory"],
+            "confidence": dividend_info["confidence"],
+            "isLowConfidence": False,
+            "documentType": dividend_info["documentType"],
+            "transactionType": dividend_info["transactionType"],
+            "isSalarySlip": False,
+            "grossSalary": dividend_info.get("grossAmount"),
+            "deductions": dividend_info.get("tdsAmount"),
+            "netSalary": dividend_info["amount"],
+        }
+
+    # -----------------------------------------------------------------------
+    # INTEREST STATEMENT DETECTION
+    # -----------------------------------------------------------------------
+    interest_info = parse_interest_details(raw_text)
+    if interest_info and interest_info.get("isInterest"):
+        return {
+            "raw_text": raw_text.strip(),
+            "amount": interest_info["amount"],
+            "date": interest_info["date"],
+            "merchant": interest_info["merchant"],
+            "description": interest_info["description"],
+            "paymentMethod": "Bank Account",
+            "suggestedCategory": interest_info["suggestedCategory"],
+            "confidence": interest_info["confidence"],
+            "isLowConfidence": False,
+            "documentType": interest_info["documentType"],
+            "transactionType": interest_info["transactionType"],
+            "isSalarySlip": False,
+            "grossSalary": None,
+            "deductions": None,
+            "netSalary": None,
+        }
 
     # -----------------------------------------------------------------------
     # SALARY SLIP DETECTION

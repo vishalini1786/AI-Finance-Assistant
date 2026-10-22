@@ -271,82 +271,92 @@ function extractFinancialEntities(text) {
   }
 
   // 5. Money Amounts
-  // 5a. Currency symbol/code: ₹15,000, Rs. 15000, INR 15000
-  const currRegex = /(?:₹|rs\.?|inr)\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(crores?|cr|lakhs?|lacs?|lac|l\b|k\b)?\b/gi;
+  function addMoney(amt, start, end, raw) {
+    if (isNaN(amt) || amt <= 0) return;
+    if (isReserved(start, end)) return;
+    const overlapIdx = money.findIndex((m) => !(end <= m.start || start >= m.end));
+    if (overlapIdx !== -1) {
+      if (raw.length > money[overlapIdx].raw.length) {
+        money[overlapIdx] = { value: amt, start, end, raw };
+      }
+    } else {
+      money.push({ value: amt, start, end, raw });
+    }
+  }
+
+  // 5a. Currency symbol/code with prefix: ₹15,000, Rs. 15000, INR 15000, rupees 15, rupee 200
+  const currRegex = /(?:₹|rs\.?|rupees?|inr)\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(crores?|cr|lakhs?|lacs?|lac|l\b|k\b)?\b/gi;
   let cMatch;
   while ((cMatch = currRegex.exec(text)) !== null) {
-    if (isReserved(cMatch.index, cMatch.index + cMatch[0].length)) continue;
     let amt = parseFloat(cMatch[1].replace(/,/g, ''));
     const mult = cMatch[2] ? cMatch[2].toLowerCase() : '';
     if (mult.startsWith('cr')) amt *= 10000000;
     else if (mult.startsWith('l')) amt *= 100000;
     else if (mult === 'k') amt *= 1000;
-    money.push({
-      value: amt,
-      raw: cMatch[0],
-      start: cMatch.index,
-      end: cMatch.index + cMatch[0].length,
-    });
+    addMoney(amt, cMatch.index, cMatch.index + cMatch[0].length, cMatch[0]);
   }
 
-  // 5b. Denomination words: 1 crore, 50 lakhs, 15k, 2 lakh
+  // 5b. Currency with suffix: 15 rupees, 200 rs
+  const currSuffixRegex = /\b(\d[\d,]*(?:\.\d{1,2})?)\s*(?:rupees?|rs\.?|inr)\b/gi;
+  let csMatch;
+  while ((csMatch = currSuffixRegex.exec(text)) !== null) {
+    const amt = parseFloat(csMatch[1].replace(/,/g, ''));
+    addMoney(amt, csMatch.index, csMatch.index + csMatch[0].length, csMatch[0]);
+  }
+
+  // 5c. Denomination words: 1 crore, 50 lakhs, 15k, 2 lakh
   const denomRegex = /\b(\d+(?:\.\d+)?)\s*(crores?|cr|lakhs?|lacs?|lac|k)\b/gi;
   let dnMatch;
   while ((dnMatch = denomRegex.exec(text)) !== null) {
-    if (isReserved(dnMatch.index, dnMatch.index + dnMatch[0].length)) continue;
-    if (money.some((m) => Math.abs(m.start - dnMatch.index) < 6)) continue;
     let amt = parseFloat(dnMatch[1]);
     const mult = dnMatch[2].toLowerCase();
     if (mult.startsWith('cr')) amt *= 10000000;
     else if (mult.startsWith('l')) amt *= 100000;
     else if (mult === 'k') amt *= 1000;
-    money.push({
-      value: amt,
-      raw: dnMatch[0],
-      start: dnMatch.index,
-      end: dnMatch.index + dnMatch[0].length,
-    });
+    addMoney(amt, dnMatch.index, dnMatch.index + dnMatch[0].length, dnMatch[0]);
   }
 
-  // 5c. Contextual money verbs: 'worth about 15,000', 'cost 200', 'spent 500', 'paid 800', 'received 10,000'
-  const contextMoneyRegex = /\b(?:worth(?:\s+about|\s+around)?|cost(?:s)?|spent|paid|received|earned|got|saved|price(?:\s+of)?|for|at|bill\s+of)\s+(?:about|around|approx(?:\.)?|₹|rs\.?|inr)?\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(crores?|cr|lakhs?|lacs?|lac|l\b|k\b)?\b/gi;
+  // 5d. Contextual money verbs: 'worth about 15,000', 'cost 200', 'costs about rupees 15', 'bill was rupees 200', 'costs 300'
+  const contextMoneyRegex = /\b(?:worth(?:\s+about|\s+around)?|cost(?:s)?(?:\s+about|\s+around)?|spent|paid|received|earned|got|saved|price(?:\s+of)?|for|at|(?:total\s+)?bill(?:\s+of|\s+was|\s+is)?|(?:was|is)(?:\s+about|\s+around)?)\s+(?:about|around|approx(?:\.)?|₹|rs\.?|rupees?|inr)?\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(crores?|cr|lakhs?|lacs?|lac|l\b|k\b)?\b/gi;
   let cmMatch;
   while ((cmMatch = contextMoneyRegex.exec(text)) !== null) {
     const rawDigits = cmMatch[1].replace(/,/g, '');
-    const num = parseFloat(rawDigits);
-    const startPos = cmMatch.index;
-    const endPos = cmMatch.index + cmMatch[0].length;
-    if (isReserved(startPos, endPos)) continue;
-    if (money.some((m) => Math.abs(m.start - startPos) < 15)) continue;
-
-    let amt = num;
+    let amt = parseFloat(rawDigits);
     const mult = cmMatch[2] ? cmMatch[2].toLowerCase() : '';
     if (mult.startsWith('cr')) amt *= 10000000;
     else if (mult.startsWith('l')) amt *= 100000;
     else if (mult === 'k') amt *= 1000;
-
-    money.push({
-      value: amt,
-      raw: cmMatch[0],
-      start: startPos,
-      end: endPos,
-    });
+    addMoney(amt, cmMatch.index, cmMatch.index + cmMatch[0].length, cmMatch[0]);
   }
 
-  // 5d. Spoken word amounts: 'ten rupees', 'two hundred', 'fifty', 'five hundred'
+  // 5e. Conjoined list items: '40 on tea, 120 on breakfast, 200 on lunch'
+  const listMoneyRegex = /\b(\d[\d,]*(?:\.\d{1,2})?)\s*(?:on|for)\s+([a-zA-Z]+)/gi;
+  let lmMatch;
+  while ((lmMatch = listMoneyRegex.exec(text)) !== null) {
+    const amt = parseFloat(lmMatch[1].replace(/,/g, ''));
+    addMoney(amt, lmMatch.index, lmMatch.index + lmMatch[0].length, lmMatch[0]);
+  }
+
+  // 5f. Multiple numbers in spending clause: 'cost 80 and 120'
+  const conjoinedRegex = /\b(?:cost(?:s)?|spent|paid|items?|bill)\s+(?:about\s+)?(\d[\d,]*)\s+(?:and|,)\s*(\d[\d,]*)/gi;
+  let cjMatch;
+  while ((cjMatch = conjoinedRegex.exec(text)) !== null) {
+    const a1 = parseFloat(cjMatch[1].replace(/,/g, ''));
+    const a2 = parseFloat(cjMatch[2].replace(/,/g, ''));
+    addMoney(a1, cjMatch.index, cjMatch.index + cjMatch[1].length + 4, cjMatch[1]);
+    const secStart = cjMatch.index + cjMatch[0].lastIndexOf(cjMatch[2]);
+    addMoney(a2, secStart, secStart + cjMatch[2].length, cjMatch[2]);
+  }
+
+  // 5g. Spoken word amounts: 'ten rupees', 'two hundred', 'fifty', 'five hundred'
   const wordAmountsRegex = /\b(?:tea\s+for|breakfast\s+cost|fruits\s+for|petrol\s+for|spent\s+another|spent|paid|cost|worth|for)\s+(one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|crore)(?:\s+(?:hundred|thousand|lakh|crore))?(?:\s+rupees)?\b/gi;
   let waMatch;
   while ((waMatch = wordAmountsRegex.exec(text)) !== null) {
     const fullMatch = waMatch[0];
     const wordsOnly = fullMatch.replace(/^(?:tea\s+for|breakfast\s+cost|fruits\s+for|petrol\s+for|spent\s+another|spent|paid|cost|worth|for)\s+/i, '').replace(/\s+rupees$/i, '');
     const val = parseWordNumber(wordsOnly);
-    if (val && !money.some((m) => Math.abs(m.start - waMatch.index) < 10)) {
-      money.push({
-        value: val,
-        raw: fullMatch,
-        start: waMatch.index,
-        end: waMatch.index + fullMatch.length,
-      });
+    if (val) {
+      addMoney(val, waMatch.index, waMatch.index + fullMatch.length, fullMatch);
     }
   }
 
@@ -501,7 +511,7 @@ function parseDayNarration(text, categories = []) {
     const between = text.slice(prevEnd, nextStart);
 
     // Look for punctuation, conjunctions, or temporal markers to split clauses
-    const sepRegex = /([.;]|\n+|(?:,\s*(?:and|then)\b)|(?:\b(?:and\s+then|then|later|in the evening|in the morning|in the afternoon)\b)|,)/i;
+    const sepRegex = /([.;]|\n+|(?:,\s*(?:and|then)\b)|(?:\b(?:and\s+then|and|then|later|after\s+that|in the evening|in the morning|in the afternoon)\b)|,)/i;
     const match = sepRegex.exec(between);
 
     let splitOffset;
@@ -522,23 +532,47 @@ function parseDayNarration(text, categories = []) {
     const isIncome = /\b(received|credit|earned|salary|freelance|got|income|cashback)\b/i.test(segment);
 
     let desc = segment;
-    desc = desc.replace(/(?:₹|rs\.?|inr)?\s*[\d,]+(?:\.\d+)?/gi, '');
+    desc = desc.replace(/(?:₹|rs\.?|rupees?|inr)?\s*[\d,]+(?:\.\d+)?/gi, '');
     desc = desc.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|crore)(?:\s+(?:hundred|thousand|lakh|crore))?(?:\s+rupees)?\b/gi, '');
-    desc = desc.replace(/\b(this morning|in the morning|in the evening|in the afternoon|later|at night|today|yesterday|then|also|and|cost|costs|for|worth|spent|another|i bought|i had|i filled|i went to the|i paid|i received|from|at|on)\b/gi, ' ');
+    desc = desc.replace(/\b(this morning|today morning|in the morning|in the evening|in the afternoon|later|at night|today|yesterday|then|also|and|cost|costs|for|worth|spent|another|i bought|i had|i filled|i went to the|i paid|i received|from|at|on|about|which|my|the total bill was|total bill was|total bill|bill was|bill of|was|is)\b/gi, ' ');
     desc = desc.replace(/[.,;!?]/g, ' ').replace(/\s+/g, ' ').trim();
 
-    if (!desc || desc.length < 2) {
-      if (/tea/i.test(segment)) desc = 'Tea';
-      else if (/breakfast/i.test(segment)) desc = 'Breakfast';
-      else if (/fruits?/i.test(segment)) desc = 'Fruits';
-      else if (/petrol|fuel/i.test(segment)) desc = 'Petrol';
-      else if (/theatre|movie|cinema/i.test(segment)) desc = 'Theatre';
-      else if (/dinner|lunch|food/i.test(segment)) desc = 'Dinner';
-      else desc = isIncome ? 'Income' : `Expense ${i + 1}`;
+    // Specific entity refinement
+    if (/tea/i.test(segment)) {
+      desc = 'Tea';
+    } else if (/burma\s*hotel/i.test(segment) && /lunch/i.test(segment)) {
+      desc = 'Lunch at Burma Hotel';
+    } else if (/burma\s*hotel/i.test(segment)) {
+      desc = 'Burma Hotel';
+    } else if (/cinema\s*ticket/i.test(segment) || /cinema/i.test(segment) || /movie/i.test(segment)) {
+      desc = 'Cinema tickets';
+    } else if (/breakfast/i.test(segment)) {
+      desc = 'Breakfast';
+    } else if (/fruits?/i.test(segment)) {
+      desc = 'Fruits';
+    } else if (/petrol|fuel/i.test(segment)) {
+      desc = 'Petrol';
+    } else if (/dinner/i.test(segment)) {
+      desc = 'Dinner';
+    } else if (/lunch/i.test(segment)) {
+      desc = 'Lunch';
+    } else if (!desc || desc.length < 2) {
+      desc = isIncome ? 'Income' : `Expense ${i + 1}`;
     }
 
     const titleDesc = desc.charAt(0).toUpperCase() + desc.slice(1);
-    const cat = matchCategory(titleDesc + ' ' + segment, categories);
+    
+    // Explicit priority category matching
+    let cat = null;
+    if (/cinema|theatre|movie|pvr|inox/i.test(segment)) {
+      cat = categories.find((c) => /entertainment/i.test(c.name)) || { category_id: 4, name: 'Entertainment' };
+    } else if (/petrol|fuel|diesel/i.test(segment)) {
+      cat = categories.find((c) => /transport|fuel/i.test(c.name)) || { category_id: 2, name: 'Transportation' };
+    } else if (/tea|coffee|breakfast|lunch|dinner|hotel|food|fruit/i.test(segment)) {
+      cat = categories.find((c) => /food/i.test(c.name)) || { category_id: 1, name: 'Food' };
+    } else {
+      cat = matchCategory(titleDesc + ' ' + segment, categories);
+    }
 
     if (isIncome) {
       const source = matchIncomeSource(segment);
@@ -550,6 +584,7 @@ function parseDayNarration(text, categories = []) {
         date: defaultDate,
         description: titleDesc,
         status: 'PENDING_CONFIRMATION',
+        segment,
       });
     } else {
       transactions.push({
@@ -563,7 +598,25 @@ function parseDayNarration(text, categories = []) {
         date: defaultDate,
         paymentMode: matchPaymentMode(segment) || 'UPI',
         status: 'PENDING_CONFIRMATION',
+        segment,
       });
+    }
+  }
+
+  // Part 5.2: Distinguish totals from individual transactions (e.g. "lunch items 80 and 120, total bill 200")
+  if (transactions.length >= 2) {
+    for (let i = 0; i < transactions.length; i++) {
+      const candidate = transactions[i];
+      const otherItems = transactions.filter((_, idx) => idx !== i);
+      const otherSum = otherItems.reduce((sum, it) => sum + it.amount, 0);
+
+      // Check if candidate equals the sum of the other items
+      if (Math.abs(candidate.amount - otherSum) < 0.01) {
+        if (/\b(?:total|bill|all together|in total)\b/i.test(candidate.segment || '') || /\b(?:total|bill)\b/i.test(candidate.description || '')) {
+          transactions.splice(i, 1);
+          break;
+        }
+      }
     }
   }
 
@@ -1192,7 +1245,7 @@ async function executeConfirmTransaction(userId, pendingTransaction) {
  * Main chat handler: interprets request, answers grounded questions, or builds pending multi-module actions.
  */
 async function processChatMessage(userId, message, conversationHistory = [], existingPending = null) {
-  const ctx = await getUserFullContext(userId);
+  const ctx = await module.exports.getUserFullContext(userId);
   const text = (message || '').trim();
   const lower = text.toLowerCase();
   const userName = ctx.user?.name ? ctx.user.name.split(' ')[0] : 'there';
@@ -1297,32 +1350,87 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
       let updated = { ...activePending };
       let changedDescriptions = [];
 
-      // Batch transaction item edits: e.g. "change breakfast to 250", "remove petrol", "change date to yesterday"
+      // Batch transaction item edits: e.g. "change tea to 20", "the lunch was actually 250", "remove cinema ticket", "add another 50 for parking"
       if (activePending.type === 'batch') {
         const items = [...(activePending.items || [])];
-        const removeMatch = lower.match(/\b(?:remove|delete|drop|exclude)\s+([a-zA-Z\s]+)/i);
+
+        // 1. Remove item: "remove cinema ticket", "delete cinema", "drop tea"
+        const removeMatch = lower.match(/\b(?:remove|delete|drop|exclude)\s+(?:the\s+)?([a-zA-Z\s]+)/i);
         if (removeMatch) {
-          const target = removeMatch[1].trim().toLowerCase();
-          const filtered = items.filter((it) => !(it.merchantName || it.description || '').toLowerCase().includes(target));
+          const rawTarget = removeMatch[1].trim().toLowerCase();
+          const target = rawTarget.replace(/\b(?:the|a|an|ticket|tickets|item|items|record|expense)\b/gi, '').trim();
+          const filtered = items.filter((it) => {
+            const name = (it.merchantName || it.description || '').toLowerCase();
+            return !name.includes(target || rawTarget);
+          });
           if (filtered.length < items.length) {
             updated.items = filtered;
             updated.count = filtered.length;
             updated.totalAmount = filtered.reduce((sum, it) => sum + Number(it.amount || 0), 0);
-            changedDescriptions.push(`removed "${target}" from the batch`);
+            changedDescriptions.push(`removed "${rawTarget}" from the batch`);
           }
         }
 
-        const editMatch = lower.match(/\b(?:change|make|update|set)\s+([a-zA-Z\s]+?)\s+(?:to|as)?\s*(?:₹|rs\.?)?\s*(\d[\d,]*)/i);
+        // 2. Edit item amount: "change the tea amount to 20", "make tea 20", "the lunch was actually 250"
+        let editMatch = lower.match(/\b(?:change|make|update|set)\s+(?:the\s+)?([a-zA-Z\s]+?)(?:\s+amount)?\s+(?:to|as)?\s*(?:₹|rs\.?|rupees?)?\s*(\d[\d,]*)/i);
+        if (!editMatch) {
+          editMatch = lower.match(/\b(?:the\s+)?([a-zA-Z\s]+?)\s+(?:was|is)\s+(?:actually\s+)?(?:₹|rs\.?|rupees?)?\s*(\d[\d,]*)/i);
+        }
         if (editMatch) {
-          const target = editMatch[1].trim().toLowerCase();
+          const rawTarget = editMatch[1].trim().toLowerCase();
+          const target = rawTarget.replace(/\b(?:the|a|an|amount|price|cost|item|bill)\b/gi, '').trim();
           const amt = parseFloat(editMatch[2].replace(/,/g, ''));
-          const idx = items.findIndex((it) => (it.merchantName || it.description || '').toLowerCase().includes(target));
+          const idx = items.findIndex((it) => {
+            const name = (it.merchantName || it.description || '').toLowerCase();
+            return name.includes(target || rawTarget);
+          });
           if (idx !== -1 && !isNaN(amt) && amt > 0) {
             items[idx] = { ...items[idx], amount: amt };
             updated.items = items;
             updated.totalAmount = items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
             changedDescriptions.push(`updated ${items[idx].merchantName || items[idx].description} to ${formatCurrency(amt)}`);
           }
+        }
+
+        // 3. Add another item to batch: "add another 50 for parking", "add 50 for parking"
+        const addMatch = lower.match(/\b(?:add|plus|include|and)\s+(?:another\s+)?(?:₹|rs\.?|rupees?)?\s*(\d[\d,]*)\s+(?:for|on)\s+([a-zA-Z\s]+)/i);
+        if (addMatch) {
+          const amt = parseFloat(addMatch[1].replace(/,/g, ''));
+          const desc = addMatch[2].trim();
+          const titleDesc = desc.charAt(0).toUpperCase() + desc.slice(1);
+          let cat = null;
+          if (/cinema|theatre|movie/i.test(desc)) cat = { category_id: 4, name: 'Entertainment' };
+          else if (/parking|petrol|fuel|toll|transport/i.test(desc)) cat = { category_id: 2, name: 'Transportation' };
+          else if (/food|tea|coffee|snack|lunch/i.test(desc)) cat = { category_id: 1, name: 'Food' };
+          else cat = matchCategory(desc, ctx.categories || []);
+
+          const newItem = {
+            id: `exp_${Date.now()}_add_${Math.random().toString(36).substring(2, 6)}`,
+            type: 'expense',
+            amount: amt,
+            categoryId: cat.category_id,
+            category: cat.name,
+            merchantName: titleDesc,
+            description: titleDesc,
+            date: activePending.date || todayIso(),
+            paymentMode: 'UPI',
+            status: 'PENDING_CONFIRMATION',
+          };
+          items.push(newItem);
+          updated.items = items;
+          updated.count = items.length;
+          updated.totalAmount = items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
+          changedDescriptions.push(`added ${titleDesc} (${formatCurrency(amt)}) to the batch`);
+        }
+
+        // 4. Batch type flip: "No, I meant income"
+        if (/\b(?:meant|mean|actually)\s+(?:an?\s+)?income\b/i.test(lower) || lower === 'income' || lower === 'no income') {
+          updated.items = items.map((it) => ({
+            ...it,
+            type: 'income',
+            source: matchIncomeSource(it.merchantName || it.description || 'Other') || 'Other',
+          }));
+          changedDescriptions.push(`converted all transactions in the batch to **Income**`);
         }
       }
 
@@ -1387,9 +1495,20 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
       }
 
       if (changedDescriptions.length > 0) {
+        let extraTable = '';
+        if (updated.type === 'batch') {
+          const tableHeader = `| Description | Amount | Category | Date |\n|---|---:|---|---|`;
+          const tableRows = updated.items.map((it) => {
+            const name = it.merchantName || it.description || it.source;
+            const cat = it.category || it.source;
+            return `| ${name} | ${formatCurrency(it.amount)} | ${cat} | ${it.date} |`;
+          }).join('\n');
+          const totalRow = `| **Total** | **${formatCurrency(updated.totalAmount)}** | | |`;
+          extraTable = `\n\n📋 **Updated Batch Preview (${updated.count} transactions):**\n\n${tableHeader}\n${tableRows}\n${totalRow}`;
+        }
         return {
-          reply: `I've updated the pending ${updated.type.replace('_', ' ')} ${changedDescriptions.join(' and ')}.\n\n`
-            + `Should I confirm and save this updated record?`,
+          reply: `I've updated the pending ${updated.type.replace('_', ' ')}: ${changedDescriptions.join(' and ')}.${extraTable}\n\n`
+            + `Should I confirm and save all ${updated.count || 1} transactions to your FinMan records?`,
           suggestedQuestions: ['Confirm and Add', 'Cancel'],
           pendingTransaction: updated,
         };

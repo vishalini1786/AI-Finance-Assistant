@@ -37,4 +37,10 @@ module.exports = {
   },
 
   aiServiceUrl: process.env.AI_SERVICE_URL || null,
+
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY || null,
+    model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+  },
 };
+
