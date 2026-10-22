@@ -2,7 +2,17 @@
 // Shared Axios client for all frontend services.
 import axios from 'axios';
 
-const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+function normalizeBaseUrl(url) {
+  if (!url) return '';
+  let clean = url.trim().replace(/\/+$/, '');
+  if (!clean.endsWith('/api')) {
+    clean += '/api';
+  }
+  return clean;
+}
+
+const rawConfiguredUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const configuredBaseUrl = rawConfiguredUrl ? normalizeBaseUrl(rawConfiguredUrl) : '';
 const developmentBaseUrl = 'http://localhost:5000/api';
 const productionBaseUrl = 'https://ai-finance-assistant-80lk.onrender.com/api';
 const BASE_URL = configuredBaseUrl || (import.meta.env.DEV ? developmentBaseUrl : productionBaseUrl);

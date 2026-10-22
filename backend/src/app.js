@@ -148,23 +148,28 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// ---- Phase 1 routes ----
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/income', incomeRoutes);
-app.use('/api/expenses', expenseRoutes);
-app.use('/api/budgets', budgetRoutes);
-app.use('/api/monthly-plans', monthlyPlanRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api/goals', goalRoutes);
-app.use('/api/holdings', holdingRoutes);
-app.use('/api/calendar', calendarRoutes);
-app.use('/api/documents', documentRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/admin', adminRoutes);
+// ---- Phase 1 & 2 routes ----
+const apiRouter = express.Router();
+apiRouter.use('/auth', authRoutes);
+apiRouter.use('/users', userRoutes);
+apiRouter.use('/categories', categoryRoutes);
+apiRouter.use('/income', incomeRoutes);
+apiRouter.use('/expenses', expenseRoutes);
+apiRouter.use('/budgets', budgetRoutes);
+apiRouter.use('/monthly-plans', monthlyPlanRoutes);
+apiRouter.use('/dashboard', dashboardRoutes);
+apiRouter.use('/projects', projectRoutes);
+apiRouter.use('/goals', goalRoutes);
+apiRouter.use('/holdings', holdingRoutes);
+apiRouter.use('/calendar', calendarRoutes);
+apiRouter.use('/documents', documentRoutes);
+apiRouter.use('/notifications', notificationRoutes);
+apiRouter.use('/reports', reportRoutes);
+apiRouter.use('/admin', adminRoutes);
+
+// Mount under /api (standard) and directly at root (resilient for base URLs without /api)
+app.use('/api', apiRouter);
+app.use(apiRouter);
 
 // Client-side single page app fallback (if frontend is built locally or packaged)
 if (hasFrontendDist) {
