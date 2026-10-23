@@ -31,6 +31,87 @@ function keywordCategoryFromText(text) {
   return best;
 }
 
+async function getOcrDiagnostics() {
+  if (!env.aiServiceUrl) {
+    return {
+      configured: false,
+      reachable: false,
+      status: 'UNCONFIGURED',
+      statusLabel: 'OCR service is not configured',
+      serviceUrl: null,
+      message: 'OCR service is not configured. Set AI_SERVICE_URL in the backend environment and restart the API.',
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  const start = Date.now();
+
+  try {
+    const res = await fetch(`${env.aiServiceUrl}/health`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    const latencyMs = Date.now() - start;
+
+    if (!res.ok) {
+      return {
+        configured: true,
+        reachable: false,
+        status: 'UNHEALTHY',
+        statusLabel: `OCR service returned HTTP ${res.status}`,
+        serviceUrl: env.aiServiceUrl,
+        latencyMs,
+        message: 'The OCR service responded but indicated an unhealthy status.',
+        checkedAt: new Date().toISOString(),
+      };
+    }
+
+    const data = await res.json();
+    return {
+      configured: true,
+      reachable: true,
+      status: 'OPERATIONAL',
+      statusLabel: 'OCR service is online and ready',
+      serviceUrl: env.aiServiceUrl,
+      latencyMs,
+      details: {
+        ocrAvailable: Boolean(data.ocr_available),
+        tesseractAvailable: Boolean(data.tesseract_available),
+        languageDataAvailable: Boolean(data.english_language_data_available),
+      },
+      checkedAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    if (err.name === 'AbortError') {
+      return {
+        configured: true,
+        reachable: false,
+        status: 'TIMEOUT',
+        statusLabel: 'OCR service timed out (4000ms)',
+        serviceUrl: env.aiServiceUrl,
+        latencyMs,
+        message: 'The OCR service took longer than 4000ms to respond. It may be spinning up.',
+        checkedAt: new Date().toISOString(),
+      };
+    }
+    return {
+      configured: true,
+      reachable: false,
+      status: 'UNAVAILABLE',
+      statusLabel: 'OCR service is unreachable',
+      serviceUrl: env.aiServiceUrl,
+      latencyMs,
+      message: 'Connection failed. Verify that the OCR service is running and accessible from the backend.',
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function requestOcr(file) {
   if (!env.aiServiceUrl) {
     return {
@@ -197,4 +278,4 @@ async function processReceipt(userId, file) {
   }
 }
 
-module.exports = { processReceipt, requestOcr };
+module.exports = { processReceipt, requestOcr, getOcrDiagnostics };

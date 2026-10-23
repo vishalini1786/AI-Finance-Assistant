@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import adminService from '../../services/adminService';
-import { FileText, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { FileText, CheckCircle, Clock, XCircle, AlertTriangle, ShieldCheck, Zap } from 'lucide-react';
 
 const STATUS_CONFIG = {
   processed: { icon: CheckCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-950/60' },
@@ -38,6 +38,8 @@ export const AdminDocuments = () => {
     summary[st] = (summary[st] || 0) + parseInt(s.count, 10);
   });
 
+  const ocrStatus = data?.ocrStatus;
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -54,6 +56,73 @@ export const AdminDocuments = () => {
           </div>
         ) : (
           <>
+            {/* OCR Service Connection Status Banner */}
+            {ocrStatus && (
+              <div
+                className={`p-4 rounded-2xl border flex items-start gap-3.5 shadow-2xs ${
+                  ocrStatus.configured && ocrStatus.reachable
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60'
+                    : ocrStatus.configured && !ocrStatus.reachable
+                    ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60'
+                    : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/60'
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    ocrStatus.configured && ocrStatus.reachable
+                      ? 'bg-emerald-600 text-white'
+                      : ocrStatus.configured && !ocrStatus.reachable
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-amber-600 text-white'
+                  }`}
+                >
+                  {ocrStatus.configured && ocrStatus.reachable ? (
+                    <CheckCircle className="w-5 h-5" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3
+                      className={`text-xs font-black uppercase tracking-wider ${
+                        ocrStatus.configured && ocrStatus.reachable
+                          ? 'text-emerald-900 dark:text-emerald-200'
+                          : ocrStatus.configured && !ocrStatus.reachable
+                          ? 'text-rose-900 dark:text-rose-200'
+                          : 'text-amber-900 dark:text-amber-200'
+                      }`}
+                    >
+                      {ocrStatus.statusLabel}
+                    </h3>
+                    {ocrStatus.latencyMs !== undefined && ocrStatus.latencyMs !== null && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        {ocrStatus.latencyMs}ms
+                      </span>
+                    )}
+                  </div>
+                  <p
+                    className={`text-xs mt-0.5 leading-relaxed ${
+                      ocrStatus.configured && ocrStatus.reachable
+                        ? 'text-emerald-800 dark:text-emerald-300 font-medium'
+                        : ocrStatus.configured && !ocrStatus.reachable
+                        ? 'text-rose-800 dark:text-rose-300 font-medium'
+                        : 'text-amber-800 dark:text-amber-300 font-medium'
+                    }`}
+                  >
+                    {ocrStatus.message ||
+                      (ocrStatus.reachable
+                        ? 'Tesseract 5.x engine is online and processing receipts, bills, and salary slips.'
+                        : 'OCR service is not responding.')}
+                  </p>
+                  {!ocrStatus.configured && (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                      Configure <code className="font-mono font-bold bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">AI_SERVICE_URL</code> on your Render backend deployment pointing to your FastAPI OCR service.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
             {/* Status Summary */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {Object.entries(summary).map(([status, count]) => {

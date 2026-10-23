@@ -18,6 +18,19 @@ for (const key of requiredVars) {
   }
 }
 
+function sanitizeServiceUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === 'PLACEHOLDER' || trimmed === 'null' || trimmed === 'undefined') return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return trimmed.replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   port: process.env.PORT || 5000,
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -36,10 +49,10 @@ module.exports = {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
 
-  aiServiceUrl: process.env.AI_SERVICE_URL || null,
+  aiServiceUrl: sanitizeServiceUrl(process.env.AI_SERVICE_URL),
 
   gemini: {
-    apiKey: process.env.GEMINI_API_KEY || null,
+    apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || null,
     model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
   },
 };

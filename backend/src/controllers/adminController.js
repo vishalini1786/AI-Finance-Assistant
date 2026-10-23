@@ -160,17 +160,20 @@ async function systemHealth(req, res) {
   }
 }
 
+const documentService = require('../services/documentService');
+
 // ── OCR / Documents ───────────────────────────────────────────────
 
 async function documentMonitor(req, res) {
   try {
-    const [stats, recent] = await Promise.all([
+    const [stats, recent, ocrStatus] = await Promise.all([
       getDocumentStats(),
       getRecentDocuments(30),
+      documentService.getOcrDiagnostics().catch(() => null),
     ]);
     return sendSuccess(res, {
       message: 'Document stats fetched',
-      data: { stats, recent },
+      data: { stats, recent, ocrStatus },
     });
   } catch (err) {
     return sendError(res, { message: 'Failed to fetch document data', error: err.message });
@@ -183,6 +186,9 @@ const geminiService = require('../services/geminiService');
 
 async function aiMonitoring(req, res) {
   try {
+    if (req.query.check === 'true') {
+      await geminiService.runHealthCheck(true);
+    }
     const diag = geminiService.getGeminiDiagnostics();
     return sendSuccess(res, {
       message: 'AI monitoring data fetched',
@@ -219,16 +225,17 @@ async function listCategories(req, res) {
 async function addCategory(req, res) {
   try {
     const { name, description } = req.body;
-    if (!name) {
+    if (!name || !name.trim()) {
       return sendError(res, { statusCode: 400, message: 'Category name is required' });
     }
-    const category = await createCategory({ name, description });
+    const cleanName = name.trim();
+    const category = await createCategory({ name: cleanName, description });
     return sendSuccess(res, { statusCode: 201, message: 'Category created', data: category });
   } catch (err) {
     if (err.code === '23505') { // unique violation
-      return sendError(res, { statusCode: 409, message: 'Category name already exists' });
+      return sendError(res, { statusCode: 409, message: 'A global category with this name already exists' });
     }
-    return sendError(res, { message: 'Failed to create category', error: err.message });
+    return sendError(res, { statusCode: err.statusCode || 500, message: err.message || 'Failed to create category' });
   }
 }
 
@@ -242,20 +249,27 @@ async function editCategory(req, res) {
     }
     return sendSuccess(res, { message: 'Category updated', data: updated });
   } catch (err) {
-    return sendError(res, { message: 'Failed to update category', error: err.message });
+    if (err.code === '23505') {
+      return sendError(res, { statusCode: 409, message: 'A category with this name already exists' });
+    }
+    return sendError(res, { statusCode: err.statusCode || 500, message: err.message || 'Failed to update category' });
   }
 }
 
 async function removeCategory(req, res) {
   try {
     const { categoryId } = req.params;
-    const deleted = await deleteCategory(categoryId);
+    const reassignToCategoryId = req.body?.reassignToCategoryId || req.query?.reassignTo || null;
+    const deleted = await deleteCategory(categoryId, reassignToCategoryId);
     if (!deleted) {
       return sendError(res, { statusCode: 404, message: 'Category not found' });
     }
-    return sendSuccess(res, { message: 'Category deleted', data: deleted });
+    return sendSuccess(res, { message: 'Category deleted successfully', data: deleted });
   } catch (err) {
-    return sendError(res, { message: 'Failed to delete category', error: err.message });
+    return sendError(res, {
+      statusCode: err.statusCode || 500,
+      message: err.message || 'Failed to delete category',
+    });
   }
 }
 

@@ -15,4 +15,9 @@ const uploadReceipt = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Receipt processed; confirm extracted fields before saving', data: result });
 });
 
-module.exports = { uploadReceipt };
+const getOcrDiagnostics = asyncHandler(async (req, res) => {
+  const diag = await documentService.getOcrDiagnostics();
+  return sendSuccess(res, { message: 'OCR service diagnostics fetched', data: diag });
+});
+
+module.exports = { uploadReceipt, getOcrDiagnostics };

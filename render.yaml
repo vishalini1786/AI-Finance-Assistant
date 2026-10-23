@@ -1,4 +1,5 @@
 services:
+  # 1. FinMan Node.js Backend API
   - type: web
     name: ai-finance-assistant-backend
     env: node
@@ -28,3 +29,22 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_SERVICE_URL
+        fromService:
+          type: web
+          name: ai-finance-assistant-ocr
+          property: host
+
+  # 2. FinMan Python FastAPI OCR & ML Microservice
+  - type: web
+    name: ai-finance-assistant-ocr
+    env: docker
+    dockerfilePath: backend/ml-service/Dockerfile
+    dockerContext: backend/ml-service
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
