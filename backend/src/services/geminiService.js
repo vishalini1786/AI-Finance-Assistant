@@ -173,11 +173,13 @@ async function generateContent({
   }
 
   const apiKey = env.gemini.apiKey;
-  const model = env.gemini.model || 'gemini-1.5-flash';
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const primaryModel = env.gemini.model || 'gemini-flash-lite-latest';
+  const candidateModels = [
+    primaryModel,
+    'gemini-flash-lite-latest',
+    'gemini-3-flash-preview',
+    'gemini-3.5-flash',
+  ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
   const requestBody = {
     contents: [
@@ -200,50 +202,67 @@ async function generateContent({
     requestBody.generationConfig.responseMimeType = 'application/json';
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
+    let lastError = null;
 
-    if (!res.ok) {
-      let errorDetail = 'API call failed';
-      try {
-        const errJson = await res.json();
-        errorDetail = errJson?.error?.message || `HTTP ${res.status}`;
-      } catch (e) {
-        errorDetail = `HTTP ${res.status}`;
+    for (const model of candidateModels) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        let errorDetail = 'API call failed';
+        try {
+          const errJson = await res.json();
+          errorDetail = errJson?.error?.message || `HTTP ${res.status}`;
+        } catch (e) {
+          errorDetail = `HTTP ${res.status}`;
+        }
+
+        if (res.status === 404) {
+          // Model deprecated or not found for this tier, try next candidate
+          lastError = { success: false, status: 'ERROR', message: errorDetail };
+          continue;
+        }
+
+        if (res.status === 429) {
+          console.warn('[Gemini] Rate limit exceeded.');
+          return { success: false, status: 'RATE_LIMIT', message: 'Gemini rate limit exceeded.' };
+        }
+        if (res.status === 403 || res.status === 401) {
+          console.warn('[Gemini] Authentication or quota error.');
+          return { success: false, status: 'AUTH_OR_QUOTA_ERROR', message: 'Gemini quota or credentials issue.' };
+        }
+
+        console.warn(`[Gemini] Request failed (${res.status}): ${errorDetail}`);
+        return { success: false, status: 'ERROR', message: errorDetail };
       }
 
-      if (res.status === 429) {
-        console.warn('[Gemini] Rate limit exceeded.');
-        return { success: false, status: 'RATE_LIMIT', message: 'Gemini rate limit exceeded.' };
-      }
-      if (res.status === 403 || res.status === 401) {
-        console.warn('[Gemini] Authentication or quota error.');
-        return { success: false, status: 'AUTH_OR_QUOTA_ERROR', message: 'Gemini quota or credentials issue.' };
+      const data = await res.json();
+      const candidate = data?.candidates?.[0];
+      const textOutput = candidate?.content?.parts?.[0]?.text || '';
+
+      if (!textOutput) {
+        return { success: false, status: 'EMPTY_RESPONSE', message: 'Model returned empty response.' };
       }
 
-      console.warn(`[Gemini] Request failed (${res.status}): ${errorDetail}`);
-      return { success: false, status: 'ERROR', message: errorDetail };
+      return {
+        success: true,
+        text: textOutput,
+        model,
+        usage: data?.usageMetadata || null,
+      };
     }
 
-    const data = await res.json();
-    const candidate = data?.candidates?.[0];
-    const textOutput = candidate?.content?.parts?.[0]?.text || '';
-
-    if (!textOutput) {
-      return { success: false, status: 'EMPTY_RESPONSE', message: 'Model returned empty response.' };
-    }
-
-    return {
-      success: true,
-      text: textOutput,
-      model,
-      usage: data?.usageMetadata || null,
-    };
+    return lastError || { success: false, status: 'ERROR', message: 'No candidate Gemini model responded successfully.' };
   } catch (err) {
     if (err.name === 'AbortError') {
       console.warn('[Gemini] Request timed out after', timeoutMs, 'ms');
