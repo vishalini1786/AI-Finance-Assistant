@@ -28,6 +28,7 @@ import {
   History,
   Trash2,
   Check,
+  Plus,
 } from 'lucide-react';
 
 export const BankTransactions = () => {
@@ -69,6 +70,17 @@ export const BankTransactions = () => {
   const [showBatchesModal, setShowBatchesModal] = useState(false);
   const [batches, setBatches] = useState([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
+
+  // Manual single transaction modal
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    transactionDate: new Date().toISOString().slice(0, 10),
+    description: '',
+    amount: '',
+    direction: 'DEBIT',
+    referenceNo: '',
+    sourceAccount: 'Primary Bank Account',
+  });
 
   const loadTransactions = async () => {
     try {
@@ -213,6 +225,48 @@ export const BankTransactions = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleSaveManualTransaction = async (e) => {
+    e.preventDefault();
+    if (!manualForm.description.trim() || !manualForm.amount || Number(manualForm.amount) <= 0) {
+      setError('Please provide a valid description and positive amount.');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      setError('');
+      await bankTransactionService.commitImport({
+        filename: 'Manual Entry',
+        fileFormat: 'MANUAL',
+        transactions: [
+          {
+            transactionDate: manualForm.transactionDate,
+            description: manualForm.description.trim(),
+            amount: Number(manualForm.amount),
+            direction: manualForm.direction,
+            referenceNo: manualForm.referenceNo.trim() || null,
+            sourceAccount: manualForm.sourceAccount.trim() || 'Manual Account',
+          },
+        ],
+      });
+      setSuccess('Bank transaction recorded successfully.');
+      setShowManualModal(false);
+      setManualForm({
+        transactionDate: new Date().toISOString().slice(0, 10),
+        description: '',
+        amount: '',
+        direction: 'DEBIT',
+        referenceNo: '',
+        sourceAccount: 'Primary Bank Account',
+      });
+      await loadTransactions();
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || 'Failed to record bank transaction.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Reconcile and Posting actions
   const openMatchModal = async (tx) => {
     try {
@@ -337,9 +391,9 @@ export const BankTransactions = () => {
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
         <PageHeader
           title="Bank Transactions & Reconciliation"
-          description="Upload bank statements (CSV/XLSX), detect duplicates, reconcile accounts, and post verified records to your financial ledger."
+          subtitle="Upload bank statements (CSV/XLSX), record bank entries, detect duplicates, reconcile accounts, and post verified records to your financial ledger."
           icon={Landmark}
-          actions={
+          rightElement={
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -355,10 +409,18 @@ export const BankTransactions = () => {
                   resetUploadModal();
                   setShowUploadModal(true);
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-finman-blue text-white font-semibold text-xs rounded-xl shadow-xs hover:bg-blue-600 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 font-semibold text-xs shadow-xs hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors cursor-pointer"
               >
                 <UploadCloud className="w-4 h-4" />
-                Upload Bank Statement
+                Upload Statement
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowManualModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-finman-blue text-white font-semibold text-xs rounded-xl shadow-xs hover:bg-blue-600 transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Add Transaction
               </button>
             </div>
           }
@@ -525,16 +587,25 @@ export const BankTransactions = () => {
             <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-5">
               Upload a bank statement in CSV or XLSX format to inspect, reconcile, and synchronize your accounts.
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                resetUploadModal();
-                setShowUploadModal(true);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-finman-blue text-white font-semibold text-xs rounded-xl shadow-xs hover:bg-blue-600"
-            >
-              <UploadCloud className="w-4 h-4" /> Upload Statement
-            </button>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowManualModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-finman-blue text-white font-semibold text-xs rounded-xl shadow-xs hover:bg-blue-600 transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Add Transaction
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  resetUploadModal();
+                  setShowUploadModal(true);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl shadow-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <UploadCloud className="w-4 h-4" /> Upload Statement
+              </button>
+            </div>
           </div>
         ) : (
           <div className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-2xl shadow-xs overflow-hidden">
@@ -1221,6 +1292,134 @@ export const BankTransactions = () => {
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Add Manual Bank Transaction */}
+        {showManualModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl p-6">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-700">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Landmark className="w-4 h-4 text-finman-blue" />
+                  Add Bank Transaction
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowManualModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveManualTransaction} className="space-y-4 mt-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Transaction Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={manualForm.transactionDate}
+                    onChange={(e) => setManualForm({ ...manualForm, transactionDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:text-white focus:outline-hidden focus:border-finman-blue"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Description / Narration *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. ATM Cash Withdrawal, Salary Credit, NEFT to Landlord"
+                    value={manualForm.description}
+                    onChange={(e) => setManualForm({ ...manualForm, description: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:text-white focus:outline-hidden focus:border-finman-blue"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Direction *
+                    </label>
+                    <select
+                      value={manualForm.direction}
+                      onChange={(e) => setManualForm({ ...manualForm, direction: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-hidden"
+                    >
+                      <option value="DEBIT">Debit (Outflow / Expense)</option>
+                      <option value="CREDIT">Credit (Inflow / Deposit)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Amount (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      placeholder="0.00"
+                      value={manualForm.amount}
+                      onChange={(e) => setManualForm({ ...manualForm, amount: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:text-white focus:outline-hidden focus:border-finman-blue"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Bank / Account
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. HDFC Bank, SBI, ICICI"
+                      value={manualForm.sourceAccount}
+                      onChange={(e) => setManualForm({ ...manualForm, sourceAccount: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:text-white focus:outline-hidden focus:border-finman-blue"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Reference / Cheque #
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Optional reference number"
+                      value={manualForm.referenceNo}
+                      onChange={(e) => setManualForm({ ...manualForm, referenceNo: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:text-white focus:outline-hidden focus:border-finman-blue"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setShowManualModal(false)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-finman-blue text-white font-semibold text-xs rounded-xl shadow-xs hover:bg-blue-600 disabled:opacity-50"
+                  >
+                    {actionLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Save Transaction
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

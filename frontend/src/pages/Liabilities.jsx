@@ -297,9 +297,9 @@ export const Liabilities = () => {
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
         <PageHeader
           title="Liabilities & Loans"
-          description="Manage loans, mortgages, credit card debt, and repayment schedules with verified accounting precision."
+          subtitle="Manage loans, mortgages, credit card debt, and repayment schedules with verified accounting precision."
           icon={CreditCard}
-          actions={
+          rightElement={
             <div className="flex items-center gap-2">
               <button
                 type="button"
