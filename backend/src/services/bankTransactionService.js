@@ -328,11 +328,16 @@ async function getBatches(userId) {
   return bankTransactionRepository.getBatchesByUser(userId);
 }
 
+async function getSummary(userId) {
+  return bankTransactionRepository.getSummary(userId);
+}
+
 module.exports = {
   previewStatement,
   commitImport,
   getTransactions,
   getTransaction,
+  getSummary,
   matchTransaction,
   postTransactionToLedger,
   excludeTransaction,

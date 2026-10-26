@@ -18,6 +18,11 @@ const bankTransactionService = {
     return response.data.data;
   },
 
+  getSummary: async () => {
+    const response = await api.get('/bank-transactions/summary');
+    return response.data.data;
+  },
+
   getTransaction: async (id) => {
     const response = await api.get(`/bank-transactions/${id}`);
     return response.data.data;

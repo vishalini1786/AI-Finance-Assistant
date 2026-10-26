@@ -226,11 +226,27 @@ async function getBatches(req, res) {
   }
 }
 
+async function getSummary(req, res) {
+  try {
+    const summary = await bankTransactionService.getSummary(req.userId);
+    return sendSuccess(res, {
+      message: 'Bank transaction summary fetched successfully',
+      data: summary,
+    });
+  } catch (err) {
+    return sendError(res, {
+      statusCode: err.statusCode || 500,
+      message: err.message || 'Failed to fetch bank transaction summary',
+    });
+  }
+}
+
 module.exports = {
   parsePreview,
   commitImport,
   getTransactions,
   getTransaction,
+  getSummary,
   matchTransaction,
   postToLedger,
   excludeTransaction,

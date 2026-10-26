@@ -43,6 +43,9 @@ router.get('/', bankTransactionController.getTransactions);
 // List upload batch history
 router.get('/batches', bankTransactionController.getBatches);
 
+// Aggregated summary
+router.get('/summary', bankTransactionController.getSummary);
+
 // Single transaction details + suggested matches
 router.get('/:id', bankTransactionController.getTransaction);
 
