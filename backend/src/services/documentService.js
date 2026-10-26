@@ -1,6 +1,7 @@
 const fs = require('fs');
 const documentRepository = require('../repositories/documentRepository');
 const env = require('../config/env');
+const geminiService = require('./geminiService');
 
 // Keyword-based text analytics for OCR category suggestion.
 // This runs IN NODE.JS as a fast fallback/supplement to the ML classifier.
@@ -113,6 +114,56 @@ async function getOcrDiagnostics() {
 }
 
 async function requestOcr(file) {
+  // 1. If AI_SERVICE_URL is configured, attempt the FastAPI microservice first
+  if (env.aiServiceUrl) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    try {
+      const fileContent = await fs.promises.readFile(file.path);
+      const body = new FormData();
+      body.append('file', new Blob([fileContent], { type: file.mimetype }), file.originalname);
+      const response = await fetch(`${env.aiServiceUrl}/ocr/receipt`, {
+        method: 'POST',
+        body,
+        signal: controller.signal,
+      });
+
+      if (response.ok) {
+        const extraction = await response.json();
+        if (extraction.raw_text && extraction.raw_text.trim()) {
+          return { status: 'COMPLETED', ...extraction };
+        }
+      } else {
+        let detailMsg = 'OCR could not process this document. Please enter the values manually or try another file.';
+        try {
+          const errJson = await response.json();
+          if (typeof errJson?.detail === 'string' && errJson.detail.trim()) {
+            detailMsg = errJson.detail.trim().slice(0, 500);
+          }
+        } catch (_) {}
+        console.warn('[OCR] FastAPI microservice returned status', response.status, detailMsg);
+      }
+    } catch (error) {
+      console.warn('[OCR] FastAPI microservice call failed:', error.code || error.message);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  // 2. Multimodal Vision Fallback via Gemini if configured and file exists on disk
+  if (geminiService && geminiService.isConfigured() && file?.path && fs.existsSync(file.path)) {
+    try {
+      const fileContent = await fs.promises.readFile(file.path);
+      const geminiResult = await geminiService.extractReceiptWithGemini(fileContent, file.mimetype, file.originalname);
+      if (geminiResult && geminiResult.status === 'COMPLETED') {
+        return geminiResult;
+      }
+    } catch (geminiErr) {
+      console.warn('[OCR] Gemini Vision extraction fallback failed:', geminiErr.message);
+    }
+  }
+
+  // 3. Fallback / error handling when neither service succeeded
   if (!env.aiServiceUrl) {
     return {
       status: 'UNAVAILABLE',
@@ -121,65 +172,11 @@ async function requestOcr(file) {
     };
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
-  try {
-    const fileContent = await fs.promises.readFile(file.path);
-    const body = new FormData();
-    body.append('file', new Blob([fileContent], { type: file.mimetype }), file.originalname);
-    const response = await fetch(`${env.aiServiceUrl}/ocr/receipt`, {
-      method: 'POST',
-      body,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      let detailMsg = 'OCR could not process this document. Please enter the values manually or try another file.';
-      try {
-        const errJson = await response.json();
-        if (typeof errJson?.detail === 'string' && errJson.detail.trim()) {
-          detailMsg = errJson.detail.trim().slice(0, 500);
-        }
-      } catch (error) {
-        if (!(error instanceof SyntaxError)) {
-          throw error;
-        }
-      }
-      return { status: 'UNAVAILABLE', statusCode: response.status, message: detailMsg };
-    }
-
-    const extraction = await response.json();
-    if (!extraction.raw_text || !extraction.raw_text.trim()) {
-      return {
-        status: 'UNAVAILABLE',
-        statusCode: 422,
-        message: 'No readable text was found. Try a clearer image or enter the values manually.',
-      };
-    }
-    return { status: 'COMPLETED', ...extraction };
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      return {
-        status: 'UNAVAILABLE',
-        statusCode: 504,
-        message: 'OCR request timed out. Please enter details manually or try again.',
-      };
-    }
-    if (error.code === 'ENOENT' || error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      return {
-        status: 'UNAVAILABLE',
-        statusCode: 503,
-        message: 'OCR service is unavailable. Check that the configured OCR service is running.',
-      };
-    }
-    return {
-      status: 'UNAVAILABLE',
-      statusCode: 503,
-      message: 'OCR service is temporarily unavailable. Please enter the values manually or try again.',
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return {
+    status: 'UNAVAILABLE',
+    statusCode: 503,
+    message: 'OCR service is temporarily unavailable. Please enter the values manually or try again.',
+  };
 }
 
 async function processReceipt(userId, file) {

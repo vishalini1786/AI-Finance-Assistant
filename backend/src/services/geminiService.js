@@ -347,6 +347,167 @@ async function testConnection() {
   };
 }
 
+/**
+ * Extract financial document / receipt details using Gemini Multimodal Vision API.
+ * Supports image (JPEG, PNG, WEBP) and PDF files.
+ */
+async function extractReceiptWithGemini(fileBuffer, mimeType = 'image/jpeg', filename = 'receipt') {
+  if (!isConfigured()) {
+    return {
+      success: false,
+      status: 'UNCONFIGURED',
+      message: 'Gemini API key is not configured on the server.',
+    };
+  }
+
+  let resolvedMime = mimeType;
+  if (!resolvedMime || resolvedMime === 'application/octet-stream') {
+    const ext = (filename || '').split('.').pop().toLowerCase();
+    if (ext === 'pdf') resolvedMime = 'application/pdf';
+    else if (ext === 'png') resolvedMime = 'image/png';
+    else if (ext === 'webp') resolvedMime = 'image/webp';
+    else resolvedMime = 'image/jpeg';
+  }
+
+  const base64Data = Buffer.isBuffer(fileBuffer)
+    ? fileBuffer.toString('base64')
+    : Buffer.from(fileBuffer).toString('base64');
+
+  const prompt = `You are a specialized financial document parser for FinMan. Analyze this receipt, invoice, bill, or salary slip image or document.
+Extract the transaction details and return ONLY a valid JSON object matching this structure:
+{
+  "raw_text": "A full text transcription of all text detected in the document",
+  "amount": <number or null, the total amount payable/paid or net salary>,
+  "date": "<YYYY-MM-DD string or null>",
+  "merchant": "<merchant, store, company, or employer name, string or null>",
+  "description": "<short item summary or description, string or null>",
+  "paymentMethod": "<UPI, Cash, Credit Card, Debit Card, Net Banking, Bank Account, or null>",
+  "suggestedCategory": "<One of: Food, Fuel, Medical, Shopping, Dining, Travel, Transport, Electricity, Water, Internet, Mobile, Education, Entertainment, Salary, Investment, Other>",
+  "documentType": "<RECEIPT, SALARY_SLIP, or OTHER>",
+  "transactionType": "<EXPENSE or INCOME>",
+  "confidence": <number between 0.0 and 1.0>,
+  "isLowConfidence": <true if amount is missing or confidence < 0.6, else false>,
+  "isSalarySlip": <true or false>,
+  "grossSalary": <number or null>,
+  "deductions": <number or null>,
+  "netSalary": <number or null>
+}
+Return only JSON without markdown formatting or code blocks.`;
+
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          {
+            inlineData: {
+              mimeType: resolvedMime,
+              data: base64Data,
+            },
+          },
+          { text: prompt },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: 'application/json',
+    },
+  };
+
+  const apiKey = env.gemini.apiKey;
+  const candidateModels = [
+    env.gemini.model || 'gemini-flash-lite-latest',
+    'gemini-flash-lite-latest',
+    'gemini-3-flash-preview',
+    'gemini-3.5-flash',
+  ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+
+  try {
+    for (const model of candidateModels) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          if (res.status === 404) continue;
+          const errData = await res.json().catch(() => ({}));
+          console.warn(`[Gemini OCR] Model ${model} returned HTTP ${res.status}:`, errData?.error?.message);
+          continue;
+        }
+
+        const data = await res.json();
+        const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!responseText) continue;
+
+        let parsed;
+        try {
+          parsed = JSON.parse(responseText.trim().replace(/^```json\s*/i, '').replace(/```\s*$/i, ''));
+        } catch {
+          const match = responseText.match(/\{[\s\S]*\}/);
+          if (match) parsed = JSON.parse(match[0]);
+        }
+
+        if (parsed) {
+          return {
+            success: true,
+            status: 'COMPLETED',
+            raw_text: parsed.raw_text || '',
+            amount: typeof parsed.amount === 'number' ? parsed.amount : (parseFloat(parsed.amount) || null),
+            date: parsed.date || null,
+            merchant: parsed.merchant || null,
+            description: parsed.description || '',
+            paymentMethod: parsed.paymentMethod || null,
+            suggestedCategory: parsed.suggestedCategory || 'Other',
+            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
+            isLowConfidence: Boolean(parsed.isLowConfidence),
+            documentType: parsed.documentType || 'RECEIPT',
+            transactionType: parsed.transactionType || 'EXPENSE',
+            isSalarySlip: Boolean(parsed.isSalarySlip),
+            grossSalary: parsed.grossSalary || null,
+            deductions: parsed.deductions || null,
+            netSalary: parsed.netSalary || null,
+          };
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        console.warn(`[Gemini OCR] Error calling model ${model}:`, err.message);
+      }
+    }
+
+    return {
+      success: false,
+      status: 'UNAVAILABLE',
+      statusCode: 503,
+      message: 'Gemini Vision could not parse this document. Please enter the values manually.',
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return {
+        success: false,
+        status: 'UNAVAILABLE',
+        statusCode: 504,
+        message: 'Document OCR timed out. Please enter details manually or try again.',
+      };
+    }
+    return {
+      success: false,
+      status: 'UNAVAILABLE',
+      statusCode: 503,
+      message: 'OCR service error. Please enter the values manually.',
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 module.exports = {
   isConfigured,
   getGeminiDiagnostics,
@@ -354,4 +515,5 @@ module.exports = {
   testConnection,
   generateContent,
   extractFinancialIntent,
+  extractReceiptWithGemini,
 };
