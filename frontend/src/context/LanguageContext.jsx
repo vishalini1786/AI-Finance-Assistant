@@ -27,6 +27,8 @@ const TRANSLATIONS = {
     reports: 'Reports',
     savingsGoals: 'Savings & Goals',
     investments: 'Investments',
+    liabilities: 'Liabilities',
+    bankTransactions: 'Bank Transactions',
     profile: 'Profile & Settings',
     logout: 'Log Out',
     totalIncome: 'Total Income',

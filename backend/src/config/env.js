@@ -23,9 +23,13 @@ function sanitizeServiceUrl(url) {
   const trimmed = url.trim();
   if (!trimmed || trimmed === 'PLACEHOLDER' || trimmed === 'null' || trimmed === 'undefined') return null;
   try {
-    const parsed = new URL(trimmed);
+    let toParse = trimmed;
+    if (!toParse.startsWith('http://') && !toParse.startsWith('https://')) {
+      toParse = toParse.includes('.onrender.com') ? `https://${toParse}` : `http://${toParse}`;
+    }
+    const parsed = new URL(toParse);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-    return trimmed.replace(/\/+$/, '');
+    return toParse.replace(/\/+$/, '');
   } catch {
     return null;
   }

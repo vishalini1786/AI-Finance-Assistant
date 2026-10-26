@@ -51,7 +51,7 @@ async function createExpense(userId, payload) {
 
   const created = await expenseRepository.create({ userId, ...payload });
   const aiInsightService = require('./aiInsightService');
-  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: ['EXPENSES', 'BUDGET', 'REPORTS', 'FINANCIAL_HEALTH', 'DASHBOARD'] }).catch(() => null);
   return created;
 }
 
@@ -60,7 +60,7 @@ async function updateExpense(expenseId, userId, payload) {
   const updated = await expenseRepository.update(expenseId, userId, payload);
   if (!updated) throw notFoundError();
   const aiInsightService = require('./aiInsightService');
-  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: ['EXPENSES', 'BUDGET', 'REPORTS', 'FINANCIAL_HEALTH', 'DASHBOARD'] }).catch(() => null);
   return updated;
 }
 
@@ -68,7 +68,7 @@ async function deleteExpense(expenseId, userId) {
   const deleted = await expenseRepository.remove(expenseId, userId);
   if (!deleted) throw notFoundError();
   const aiInsightService = require('./aiInsightService');
-  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: ['EXPENSES', 'BUDGET', 'REPORTS', 'FINANCIAL_HEALTH', 'DASHBOARD'] }).catch(() => null);
 }
 
 module.exports = { getAllExpenses, getExpenseById, createExpense, updateExpense, deleteExpense };

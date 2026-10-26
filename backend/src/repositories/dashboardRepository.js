@@ -27,7 +27,10 @@ async function getTotalExpenses(userId, { startDate, endDate } = {}) {
   const values = [userId];
   const dateFilter = buildDateFilter('expense_date', startDate, endDate, values);
   const result = await db.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE user_id = $1 ${dateFilter}`,
+    `SELECT (
+       (SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id = $1 ${dateFilter}) +
+       (SELECT COALESCE(SUM(amount), 0) FROM project_expenses WHERE user_id = $1 ${dateFilter})
+     ) AS total`,
     values
   );
   return Number(result.rows[0].total);
@@ -38,8 +41,12 @@ async function getCurrentMonthTotals(userId) {
     `SELECT
        (SELECT COALESCE(SUM(amount), 0) FROM incomes
         WHERE user_id = $1 AND TO_CHAR(income_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')) AS income,
-       (SELECT COALESCE(SUM(amount), 0) FROM expenses
-        WHERE user_id = $1 AND TO_CHAR(expense_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')) AS expenses`,
+       (
+         (SELECT COALESCE(SUM(amount), 0) FROM expenses
+          WHERE user_id = $1 AND TO_CHAR(expense_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')) +
+         (SELECT COALESCE(SUM(amount), 0) FROM project_expenses
+          WHERE user_id = $1 AND TO_CHAR(expense_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM'))
+       ) AS expenses`,
     [userId]
   );
   return {
@@ -50,9 +57,14 @@ async function getCurrentMonthTotals(userId) {
 
 async function getTotalHoldings(userId, { startDate, endDate } = {}) {
   const values = [userId];
-  const dateFilter = buildDateFilter('purchase_date', startDate, endDate, values);
+  let filterStr = '';
+  // Assets represent cumulative balance sheet holdings acquired on or before endDate
+  if (endDate) {
+    values.push(endDate);
+    filterStr += ` AND (purchase_date IS NULL OR purchase_date <= $${values.length}::date)`;
+  }
   const result = await db.query(
-    `SELECT COALESCE(SUM(current_value), 0) AS total FROM financial_holdings WHERE user_id = $1 ${dateFilter}`,
+    `SELECT COALESCE(SUM(current_value), 0) AS total FROM financial_holdings WHERE user_id = $1 ${filterStr}`,
     values
   );
   return Number(result.rows[0].total);
@@ -60,9 +72,14 @@ async function getTotalHoldings(userId, { startDate, endDate } = {}) {
 
 async function getTotalLiabilities(userId, { startDate, endDate } = {}) {
   const values = [userId];
-  const dateFilter = buildDateFilter('due_date', startDate, endDate, values);
+  let filterStr = '';
+  // Liabilities represent cumulative outstanding debt obligations existing on or before endDate
+  if (endDate) {
+    values.push(endDate);
+    filterStr += ` AND (created_at::date <= $${values.length}::date)`;
+  }
   const result = await db.query(
-    `SELECT COALESCE(SUM(remaining_amount), 0) AS total FROM liabilities WHERE user_id = $1 ${dateFilter}`,
+    `SELECT COALESCE(SUM(remaining_amount), 0) AS total FROM liabilities WHERE user_id = $1 ${filterStr}`,
     values
   );
   return Number(result.rows[0].total);
@@ -92,18 +109,27 @@ async function getCategoryWiseExpenses(userId, { startDate, endDate } = {}) {
   let dateFilter = '';
   
   if (startDate || endDate) {
-    dateFilter = buildDateFilter('e.expense_date', startDate, endDate, values);
+    dateFilter = buildDateFilter('expense_date', startDate, endDate, values);
   } else {
     // Current month filter
-    dateFilter = ` AND TO_CHAR(e.expense_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')`;
+    dateFilter = ` AND TO_CHAR(expense_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')`;
   }
 
   let result = await db.query(
-    `SELECT COALESCE(c.name, 'Other') AS category_name, COALESCE(SUM(e.amount), 0) AS total_amount
-     FROM expenses e
-     LEFT JOIN categories c ON c.category_id = e.category_id
-     WHERE e.user_id = $1 ${dateFilter}
-     GROUP BY COALESCE(c.name, 'Other')
+    `WITH all_expenses AS (
+       SELECT COALESCE(c.name, 'Other') AS category_name, e.amount, e.expense_date
+       FROM expenses e
+       LEFT JOIN categories c ON c.category_id = e.category_id
+       WHERE e.user_id = $1
+       UNION ALL
+       SELECT COALESCE(pe.category, 'Project Expenses') AS category_name, pe.amount, pe.expense_date
+       FROM project_expenses pe
+       WHERE pe.user_id = $1
+     )
+     SELECT category_name, COALESCE(SUM(amount), 0) AS total_amount
+     FROM all_expenses
+     WHERE 1=1 ${dateFilter}
+     GROUP BY category_name
      ORDER BY total_amount DESC`,
     values
   );
@@ -112,11 +138,19 @@ async function getCategoryWiseExpenses(userId, { startDate, endDate } = {}) {
   // so charts and breakdowns are not empty when user has valid records
   if (result.rows.length === 0 && !startDate && !endDate) {
     result = await db.query(
-      `SELECT COALESCE(c.name, 'Other') AS category_name, COALESCE(SUM(e.amount), 0) AS total_amount
-       FROM expenses e
-       LEFT JOIN categories c ON c.category_id = e.category_id
-       WHERE e.user_id = $1
-       GROUP BY COALESCE(c.name, 'Other')
+      `WITH all_expenses AS (
+         SELECT COALESCE(c.name, 'Other') AS category_name, e.amount
+         FROM expenses e
+         LEFT JOIN categories c ON c.category_id = e.category_id
+         WHERE e.user_id = $1
+         UNION ALL
+         SELECT COALESCE(pe.category, 'Project Expenses') AS category_name, pe.amount
+         FROM project_expenses pe
+         WHERE pe.user_id = $1
+       )
+       SELECT category_name, COALESCE(SUM(amount), 0) AS total_amount
+       FROM all_expenses
+       GROUP BY category_name
        ORDER BY total_amount DESC`,
       [userId]
     );
@@ -158,12 +192,37 @@ async function getMonthlyTrends(userId, { startDate, endDate } = {}) {
      ) income ON income.month_str = TO_CHAR(month_series, 'YYYY-MM')
      LEFT JOIN (
         SELECT TO_CHAR(expense_date, 'YYYY-MM') AS month_str, SUM(amount) AS total
-        FROM expenses WHERE user_id = $1 GROUP BY 1
+        FROM (
+          SELECT expense_date, amount FROM expenses WHERE user_id = $1
+          UNION ALL
+          SELECT expense_date, amount FROM project_expenses WHERE user_id = $1
+        ) combined_expenses
+        GROUP BY 1
      ) expense ON expense.month_str = TO_CHAR(month_series, 'YYYY-MM')
      ORDER BY month_series`,
     values
   );
   return result.rows;
+}
+
+async function getTotalAllocatedSavings(userId, { startDate, endDate } = {}) {
+  const values = [userId];
+  const dateFilter = buildDateFilter('contribution_date', startDate, endDate, values);
+  const result = await db.query(
+    `SELECT COALESCE(SUM(amount), 0) AS total FROM goal_contributions WHERE user_id = $1 ${dateFilter}`,
+    values
+  );
+  return Number(result.rows[0].total);
+}
+
+async function getTotalAllocatedInvestments(userId, { startDate, endDate } = {}) {
+  const values = [userId];
+  const dateFilter = buildDateFilter('purchase_date', startDate, endDate, values);
+  const result = await db.query(
+    `SELECT COALESCE(SUM(purchase_value), 0) AS total FROM financial_holdings WHERE user_id = $1 AND purchase_value IS NOT NULL ${dateFilter}`,
+    values
+  );
+  return Number(result.rows[0].total);
 }
 
 async function getOverallBudgetUtilization(userId, { startDate, endDate } = {}) {
@@ -225,4 +284,6 @@ module.exports = {
   getCategoryWiseExpenses,
   getMonthlyTrends,
   getOverallBudgetUtilization,
+  getTotalAllocatedSavings,
+  getTotalAllocatedInvestments,
 };

@@ -1,6 +1,10 @@
 import api from './api';
 
 const reportService = {
+  getComprehensiveReport: async (params = {}) => {
+    const response = await api.get('/reports/comprehensive', { params });
+    return response.data.data;
+  },
   downloadPdf: async (params = {}) => {
     const response = await api.get('/reports/pdf', { params, responseType: 'blob' });
     const url = URL.createObjectURL(response.data);

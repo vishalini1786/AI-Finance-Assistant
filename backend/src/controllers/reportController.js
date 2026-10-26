@@ -1,6 +1,15 @@
+const reportService = require('../services/reportService');
 const pdfReportService = require('../services/pdfReportService');
 const { asyncHandler } = require('../middleware/errorMiddleware');
-const { sendError } = require('../utils/response');
+const { sendSuccess, sendError } = require('../utils/response');
+
+const getComprehensiveReport = asyncHandler(async (req, res) => {
+  const report = await reportService.getComprehensiveReport(req.userId, req.query);
+  return sendSuccess(res, {
+    data: report,
+    message: 'Financial report retrieved successfully',
+  });
+});
 
 const downloadPdf = asyncHandler(async (req, res) => pdfReportService.createReport(req.userId, res, req.query));
 
@@ -12,4 +21,8 @@ const downloadDailyPdf = asyncHandler(async (req, res) => {
   return pdfReportService.createDailyReport(req.userId, res, date);
 });
 
-module.exports = { downloadPdf, downloadDailyPdf };
+module.exports = {
+  getComprehensiveReport,
+  downloadPdf,
+  downloadDailyPdf,
+};

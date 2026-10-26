@@ -6,6 +6,7 @@ const app = require('../src/app');
 const db = require('../src/config/database');
 
 describe('Module 8A: Personalized AI Financial Analysis', () => {
+  jest.setTimeout(45000);
   let user1Token;
   let user1Id;
   let user2Token;

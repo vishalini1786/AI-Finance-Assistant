@@ -7,6 +7,7 @@ const holdingService = require('./holdingService');
 const incomeService = require('./incomeService');
 const expenseService = require('./expenseService');
 const financialProfileService = require('./financialProfileService');
+const geminiService = require('./geminiService');
 
 const budgetRepository = require('../repositories/budgetRepository');
 const goalRepository = require('../repositories/goalRepository');
@@ -814,22 +815,62 @@ async function getUserFullContext(userId) {
     microCategories[item.category_name] = (microCategories[item.category_name] || 0) + Number(item.amount);
   });
 
-  // Current month vs Previous month spending by category
-  const currentMonthCatsRes = await db.query(
-    `SELECT COALESCE(c.name, 'Other') AS category_name, COALESCE(SUM(e.amount), 0) AS total
-     FROM expenses e
-     LEFT JOIN categories c ON c.category_id = e.category_id
-     WHERE e.user_id = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2 AND EXTRACT(YEAR FROM e.expense_date) = $3
-     GROUP BY c.name`,
+  // Current month vs Previous month spending by category (unifying expenses & project_expenses)
+  let currentMonthCatsRes = await db.query(
+    `WITH combined AS (
+       SELECT COALESCE(c.name, 'Other') AS category_name, e.amount
+       FROM expenses e
+       LEFT JOIN categories c ON c.category_id = e.category_id
+       WHERE e.user_id = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2 AND EXTRACT(YEAR FROM e.expense_date) = $3
+       UNION ALL
+       SELECT COALESCE(pe.category, 'Project Expenses') AS category_name, pe.amount
+       FROM project_expenses pe
+       WHERE pe.user_id = $1 AND EXTRACT(MONTH FROM pe.expense_date) = $2 AND EXTRACT(YEAR FROM pe.expense_date) = $3
+     )
+     SELECT category_name, COALESCE(SUM(amount), 0) AS total
+     FROM combined
+     GROUP BY category_name
+     ORDER BY total DESC`,
     [userId, currentMonth, currentYear]
   ).catch(() => ({ rows: [] }));
 
+  // Fallback to overall user categories if current month has no expenses yet
+  // so category breakdowns do not show ₹0 when the user has valid historical records
+  if (currentMonthCatsRes.rows.length === 0) {
+    currentMonthCatsRes = await db.query(
+      `WITH combined AS (
+         SELECT COALESCE(c.name, 'Other') AS category_name, e.amount
+         FROM expenses e
+         LEFT JOIN categories c ON c.category_id = e.category_id
+         WHERE e.user_id = $1
+         UNION ALL
+         SELECT COALESCE(pe.category, 'Project Expenses') AS category_name, pe.amount
+         FROM project_expenses pe
+         WHERE pe.user_id = $1
+       )
+       SELECT category_name, COALESCE(SUM(amount), 0) AS total
+       FROM combined
+       GROUP BY category_name
+       ORDER BY total DESC`,
+      [userId]
+    ).catch(() => ({ rows: [] }));
+  }
+
   const prevMonthCatsRes = await db.query(
-    `SELECT COALESCE(c.name, 'Other') AS category_name, COALESCE(SUM(e.amount), 0) AS total
-     FROM expenses e
-     LEFT JOIN categories c ON c.category_id = e.category_id
-     WHERE e.user_id = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2 AND EXTRACT(YEAR FROM e.expense_date) = $3
-     GROUP BY c.name`,
+    `WITH combined AS (
+       SELECT COALESCE(c.name, 'Other') AS category_name, e.amount
+       FROM expenses e
+       LEFT JOIN categories c ON c.category_id = e.category_id
+       WHERE e.user_id = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2 AND EXTRACT(YEAR FROM e.expense_date) = $3
+       UNION ALL
+       SELECT COALESCE(pe.category, 'Project Expenses') AS category_name, pe.amount
+       FROM project_expenses pe
+       WHERE pe.user_id = $1 AND EXTRACT(MONTH FROM pe.expense_date) = $2 AND EXTRACT(YEAR FROM pe.expense_date) = $3
+     )
+     SELECT category_name, COALESCE(SUM(amount), 0) AS total
+     FROM combined
+     GROUP BY category_name
+     ORDER BY total DESC`,
     [userId, prevMonth, prevYear]
   ).catch(() => ({ rows: [] }));
 
@@ -863,9 +904,10 @@ async function getUserFullContext(userId) {
 
   // Last month total expenses
   const prevExpenseRes = await db.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total
-     FROM expenses
-     WHERE user_id = $1 AND EXTRACT(MONTH FROM expense_date) = $2 AND EXTRACT(YEAR FROM expense_date) = $3`,
+    `SELECT (
+       (SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id = $1 AND EXTRACT(MONTH FROM expense_date) = $2 AND EXTRACT(YEAR FROM expense_date) = $3) +
+       (SELECT COALESCE(SUM(amount), 0) FROM project_expenses WHERE user_id = $1 AND EXTRACT(MONTH FROM expense_date) = $2 AND EXTRACT(YEAR FROM expense_date) = $3)
+     ) AS total`,
     [userId, prevMonth, prevYear]
   ).catch(() => ({ rows: [{ total: 0 }] }));
 
@@ -882,15 +924,12 @@ async function getUserFullContext(userId) {
     [userId]
   ).catch(() => ({ rows: [] }));
 
-  // Strictly adhere to deterministic calculation rules:
-  // netCashFlow = totalIncome - totalExpenses
-  // periodSavings = max(netCashFlow, 0)
-  // deficit = max(-netCashFlow, 0)
+  // Use dashboardService's verified summary calculations
   const totalIncomeVal = Number(summary?.totalIncome || 0);
   const totalExpensesVal = Number(summary?.totalExpenses || 0);
   const netCashFlow = totalIncomeVal - totalExpensesVal;
-  const periodSavings = Math.max(netCashFlow, 0);
-  const deficit = Math.max(-netCashFlow, 0);
+  const periodSavings = summary?.periodSavings !== undefined ? Number(summary.periodSavings) : (netCashFlow > 0 ? netCashFlow : 0);
+  const deficit = netCashFlow < 0 ? Math.abs(netCashFlow) : 0;
 
   const normalizedSummary = {
     ...summary,
@@ -1559,7 +1598,7 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
   const usesDa = /\b(da|machi|nanba)\b/i.test(lower);
 
   // Check if message mentions specific financial workflows (must not be swallowed by generic greetings/help)
-  const hasSpecificFinancialIntent = /\b(?:budget|budgets|spend|spent|spending|expense|expenses|reduce|cut|trim|lower|save|savings|goal|goals|income|salary|project|projects|loan|loans|debt|invest|investment|tax|taxes|bill|bills|afford|last\s+month|previous\s+month)\b/i.test(lower);
+  const hasSpecificFinancialIntent = /\b(?:budget|budgets|spend|spent|spending|expense|expenses|reduce|cut|trim|lower|save|savings|goal|goals|income|salary|project|projects|loan|loans|debt|invest|investment|tax|taxes|bill|bills|afford|last\s+month|previous\s+month|bought|purchas|paid|cost|costs|earning|earnings|asset|assets|liability|liabilities|emi|emis|worth|balance|net\s*worth|holding|holdings|account|transact)\b/i.test(lower);
 
   // -----------------------------------------------------------------
   // 2. HELP & CAPABILITY DISCOVERY
@@ -2167,10 +2206,12 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
     }
 
     if (cats.length > 0) {
-      const topDiscretionary = cats.find((c) => ['food', 'dining', 'entertainment', 'shopping', 'lifestyle'].some((d) => c.categoryName.toLowerCase().includes(d)));
+      const topDiscretionary = cats.find((c) => ['food', 'dining', 'entertainment', 'shopping', 'lifestyle'].some((d) => (c.categoryName || '').toLowerCase().includes(d)));
       const topCat = topDiscretionary || cats[0];
-      const trim15 = Math.round(Number(topCat.total || 0) * 0.15);
-      reviewItems.push(`${reviewItems.length + 1}. **Highest Discretionary Spend: ${topCat.categoryName}:** Currently **${formatCurrency(topCat.total)}** (${topCat.percentageOfTotal}% of spending). Trimming 15% here reclaims **+${formatCurrency(trim15)}/month** into your savings.`);
+      const catAmt = Number(topCat.amount || topCat.total || 0);
+      const catPct = topCat.percentage != null ? topCat.percentage : (topCat.percentageOfTotal != null ? topCat.percentageOfTotal : 0);
+      const trim15 = Math.round(catAmt * 0.15);
+      reviewItems.push(`${reviewItems.length + 1}. **Highest Discretionary Spend: ${topCat.categoryName}:** Currently **${formatCurrency(catAmt)}** (${catPct}% of spending). Trimming 15% here reclaims **+${formatCurrency(trim15)}/month** into your savings.`);
     }
 
     if (microCount >= 3) {
@@ -3387,8 +3428,24 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
   // -----------------------------------------------------------------
   // 23. WHERE AM I SPENDING THE MOST
   // -----------------------------------------------------------------
-  if (lower.includes('spending the most') || lower.includes('spending too much') || lower.includes('where am i spending') || lower.includes('top category')) {
-    const sortedCats = Object.entries(ctx.monthComparison.currentCatMap).sort((a, b) => b[1] - a[1]);
+  const isCategoryAnalysisQuery = (
+    lower.includes('spending the most') ||
+    lower.includes('spending too much') ||
+    lower.includes('where am i spending') ||
+    lower.includes('where is my money going') ||
+    lower.includes('where does most of my money go') ||
+    lower.includes('top category') ||
+    lower.includes('biggest category') ||
+    lower.includes('highest category') ||
+    lower.includes('largest category') ||
+    lower.includes('category breakdown') ||
+    lower.includes('spending breakdown') ||
+    lower.includes('analyze my spending') ||
+    lower.includes('analyze spending')
+  );
+
+  if (isCategoryAnalysisQuery) {
+    const sortedCats = Object.entries(ctx.monthComparison.currentCatMap || {}).sort((a, b) => b[1] - a[1]);
     if (sortedCats.length === 0) {
       return {
         reply: `You haven't recorded any expenses in ${ctx.monthComparison.currentMonthName} yet. Once you add transactions, I will analyze your top spending areas!`,
@@ -3396,17 +3453,27 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
       };
     }
 
-    const topList = sortedCats.slice(0, 4).map(([cat, amt]) => `• **${cat}**: ${formatCurrency(amt)}`).join('\n');
+    const totalExp = Number(ctx.summary.totalExpenses || 0);
+    const topList = sortedCats.slice(0, 5).map(([cat, amt]) => {
+      const pct = totalExp > 0 ? Number(((amt / totalExp) * 100).toFixed(1)) : 0;
+      return `• **${cat}**: ${formatCurrency(amt)} (${pct}% of spending)`;
+    }).join('\n');
     const largest = sortedCats[0];
+    const largestPct = totalExp > 0 ? Number(((largest[1] / totalExp) * 100).toFixed(1)) : 0;
 
     const reply = `📊 **Top Spending Categories for ${ctx.monthComparison.currentMonthName}:**\n\n`
-      + `You are spending the most on **${largest[0]}** (${formatCurrency(largest[1])}).\n\n`
-      + `**Full Breakdown:**\n${topList}\n\n`
-      + `Reviewing discretionary purchases in **${largest[0]}** is the fastest way to increase your monthly savings rate.`;
+      + `You are spending the most on **${largest[0]}** (${formatCurrency(largest[1])}, which is **${largestPct}%** of your total spending).\n\n`
+      + `**Full Category Breakdown:**\n${topList}\n\n`
+      + `💡 *Tip:* Reviewing discretionary purchases in **${largest[0]}** is the fastest way to increase your monthly savings rate.`;
 
     return {
       reply,
-      suggestedQuestions: ['How much have I spent on small purchases?', 'Can I afford a phone worth ₹25,000?', 'Check my budget'],
+      suggestedQuestions: [
+        'How can I reduce that?',
+        'Where can I reduce my expenses?',
+        'Can I afford a purchase of ₹25,000?',
+        'Check my budget',
+      ],
     };
   }
 
@@ -3631,27 +3698,139 @@ async function processChatMessage(userId, message, conversationHistory = [], exi
   // -----------------------------------------------------------------
   // 29. FALLBACK / GENERAL FINANCIAL ASSISTANCE
   // -----------------------------------------------------------------
-  const reply = `I am your FinMan Personal Finance Assistant, grounded in your real financial records.\n\nYou can ask me questions or command actions naturally:\n`
-    + `• **Add Income:** "Bro, can you add my salary of ₹10,000?"\n`
-    + `• **Add Expense:** "I spent ₹50 on tea today"\n`
-    + `• **Budgets:** "Create a monthly food budget of ₹6,000"\n`
-    + `• **Projects:** "Create a home construction project with a target cost of ₹1 crore"\n`
-    + `• **Savings Goals:** "Create a savings goal of ₹5 lakh for my education by December 2027"\n`
-    + `• **Investments:** "Record an investment of ₹15,000 in gold"\n`
-    + `• **Spending Analysis:** "How much have I spent this month?" or "Where am I spending the most?"\n`
-    + `• **Affordability:** "Can I afford a phone worth ₹25,000?"\n`
-    + `• **Upcoming Bills:** "What bills are coming up?"\n\n`
-    + `How can I help you right now?`;
+  // -----------------------------------------------------------------
+  // 29. CONVERSATIONAL ASSISTANT & FALLBACK
+  // -----------------------------------------------------------------
+  const summary = ctx.summary || {};
+  const totalInc = Number(summary.totalIncome || 0);
+  const totalExp = Number(summary.totalExpenses || 0);
+  const netFlow = totalInc - totalExp;
+  const surplus = Number(summary.totalSavings || (netFlow > 0 ? netFlow : 0));
+  const deficit = Number(summary.deficit || (netFlow < 0 ? Math.abs(netFlow) : 0));
+  const categories = Object.entries(ctx.monthComparison?.currentCatMap || {}).sort((a, b) => b[1] - a[1]);
+  const topCat = categories[0];
+
+  // If Gemini AI provider is configured and available, leverage it with rich deterministic context
+  if (geminiService.isConfigured()) {
+    try {
+      const topCatSummary = categories.slice(0, 3).map(([cat, amt]) => {
+        const pct = totalExp > 0 ? ((amt / totalExp) * 100).toFixed(1) : 0;
+        return `${cat}: ${formatCurrency(amt)} (${pct}%)`;
+      }).join(', ') || 'None recorded';
+
+      const prompt = `User query: "${text}"
+Verified Financial Context for ${userName}:
+- Recorded Income: ${formatCurrency(totalInc)}
+- Recorded Expenses: ${formatCurrency(totalExp)}
+- Net Cash Flow: ${formatCurrency(netFlow)} (${netFlow >= 0 ? 'Surplus' : 'Deficit'})
+- Period Savings: ${formatCurrency(surplus)}
+- Top Categories: ${topCatSummary}
+- Active Budgets: ${(ctx.budgets || []).length}
+- Savings Goals: ${(ctx.goals || []).length}
+- Projects: ${(ctx.projects || []).length}
+- Total Assets: ${formatCurrency(summary.totalAssets || 0)}
+- Total Liabilities: ${formatCurrency(summary.totalLiabilities || 0)}
+- Net Worth: ${formatCurrency(summary.netWorth || 0)}
+
+Instructions:
+1. Speak naturally, empathetically, and conversationally to the user. Never repeat generic boilerplate like "I am your personal assistant grounded in financial records".
+2. Answer the user's specific question directly first using their actual financial numbers.
+3. If they are asking advice on spending or saving, provide 2-3 concise, practical bullet points.
+4. Keep the tone friendly, calm, and professional. Keep response under 130 words.`;
+
+      const genResult = await geminiService.generateContent({
+        prompt,
+        systemInstruction: 'You are FinMan, an expert, friendly AI personal finance assistant. Answer directly, conversationally, and accurately based on the provided numbers.',
+        temperature: 0.3,
+        timeoutMs: 8000,
+      });
+
+      if (genResult.success && genResult.text && genResult.text.trim().length > 0) {
+        return {
+          reply: genResult.text.trim(),
+          suggestedQuestions: [
+            'How much did I spend this month?',
+            'Where am I spending the most?',
+            'Check my budget',
+            'Can I afford a purchase of ₹25,000?',
+          ],
+          pendingTransaction: null,
+        };
+      }
+    } catch (genErr) {
+      console.warn('[Gemini fallback] Error calling model:', genErr.message);
+    }
+  }
+
+  // Smart, Data-Grounded Conversational Responder (Deterministic Fallback)
+  // NEVER outputs the generic repetitive canned boilerplate.
+  let smartReply = '';
+  const topCatName = topCat ? topCat[0] : null;
+  const topCatAmt = topCat ? topCat[1] : 0;
+  const topCatPct = topCat && totalExp > 0 ? Number(((topCatAmt / totalExp) * 100).toFixed(1)) : 0;
+
+  // Case A: Emotional concern or spending assessment ("spending too much", "am i doing okay", "why am i spending so much", "overspending", "feeling stressed")
+  const isSpendingConcern = /\b(spending\s+too\s+much|spend\s+too\s+much|why\s+am\s+i\s+spending|am\s+i\s+doing\s+okay|how\s+am\s+i\s+doing|feel\s+like\s+i['’]?m\s+not\s+saving|broke|overspend)\b/i.test(lower);
+  if (isSpendingConcern) {
+    if (totalExp === 0 && totalInc === 0) {
+      smartReply = `Let's check that together, ${userName}! You currently have no recorded income or expenses for this month. Once you log your transactions or add your salary, we can see exactly where your money goes.`;
+    } else if (deficit > 0) {
+      smartReply = `Let's look at your numbers together. Your recorded spending this month is **${formatCurrency(totalExp)}**, against recorded income of **${formatCurrency(totalInc)}**, putting you in a deficit of **${formatCurrency(deficit)}**.\n\n`
+        + (topCatName ? `Your biggest expense driver is **${topCatName}** at **${formatCurrency(topCatAmt)}** (${topCatPct}% of all spending).\n\n` : '')
+        + `💡 **Next Steps to Regain Control:**\n`
+        + `1. Focus on discretionary spends in **${topCatName || 'non-essential categories'}** — trimming 15% here reclaims cash flow.\n`
+        + `2. Check if you have any unrecorded income or salary deposits.\n`
+        + `3. Set a realistic envelope budget to cap your weekly spending.`;
+    } else {
+      const savingsRate = totalInc > 0 ? Math.round((netFlow / totalInc) * 100) : 0;
+      smartReply = `Let's check your position together, ${userName}. Your recorded expenses this month are **${formatCurrency(totalExp)}** against income of **${formatCurrency(totalInc)}**.\n\n`
+        + `Good news: you are currently operating in a **positive cash flow** with a surplus of **${formatCurrency(surplus)}** (savings rate of **${savingsRate}%**).\n\n`
+        + (topCatName ? `Your largest spending category is **${topCatName}** at **${formatCurrency(topCatAmt)}** (${topCatPct}% of expenses). If you want to increase your savings rate even further, that is the best place to start!` : '');
+    }
+  }
+  // Case B: Savings improvement ("how can i save more", "can i reduce expenses", "how to improve that", "save more money", "cut costs")
+  else if (/\b(save\s+more|reduce\s+expenses?|cut\s+(?:down|costs?)|improve\s+that|save\s+money|increase\s+savings?)\b/i.test(lower)) {
+    if (topCatName) {
+      const trimVal = Math.round(topCatAmt * 0.15);
+      smartReply = `Here are 3 high-impact, realistic ways to save more based on your records:\n\n`
+        + `1. **Trim ${topCatName} by 15%:** You've spent **${formatCurrency(topCatAmt)}** (${topCatPct}% of expenses) on ${topCatName}. Trimming just 15% reclaims **+${formatCurrency(trimVal)}/month** straight into your savings.\n`
+        + `2. **Pay Yourself First:** Automatically divert 20% of your salary (**${formatCurrency(Math.round((totalInc || 50000) * 0.20))}**) into your savings goals or investments on salary day before paying discretionary expenses.\n`
+        + `3. **Set a Category Budget:** Tell me (e.g. *"Create a monthly ${topCatName.toLowerCase()} budget of ${formatCurrency(Math.round(topCatAmt * 0.85))}"*) and I will track it for you!`;
+    } else {
+      smartReply = `To build a strong savings cushion:\n\n`
+        + `1. **Track every purchase:** Log your daily expenses so small leaks don't go unnoticed.\n`
+        + `2. **Target a 20% savings rate:** Aim to save at least 20% of your take-home pay.\n`
+        + `3. **Create a Goal:** Setting a specific target (like an Emergency Fund) makes saving motivating.`;
+    }
+  }
+  // Case C: Plain English explanation ("explain it in simple words", "simplify", "summary in simple words")
+  else if (/\b(simple\s+words?|in\s+simple\s+terms?|explain\s+simply|plain\s+english|break\s+it\s+down\s+simply)\b/i.test(lower)) {
+    smartReply = `Here is your financial picture in plain words:\n\n`
+      + `• **Money Came In:** ${formatCurrency(totalInc)}\n`
+      + `• **Money Went Out:** ${formatCurrency(totalExp)}\n`
+      + `• **Leftover Cash:** ${netFlow >= 0 ? `+${formatCurrency(netFlow)} (Saved)` : `-${formatCurrency(Math.abs(netFlow))} (Deficit)`}\n`
+      + `• **Net Worth:** ${formatCurrency(summary.netWorth || 0)} (Assets ${formatCurrency(summary.totalAssets || 0)} minus Liabilities ${formatCurrency(summary.totalLiabilities || 0)})\n\n`
+      + (topCatName ? `Your biggest expense bucket is **${topCatName}** (${formatCurrency(topCatAmt)}).` : 'No major expense categories recorded yet.');
+  }
+  // Case D: General natural response
+  else {
+    smartReply = `I'm here with you, ${userName}! Based on your records for ${ctx.monthComparison?.currentMonthName || 'this month'}:\n\n`
+      + `• **Income:** ${formatCurrency(totalInc)} | **Expenses:** ${formatCurrency(totalExp)}\n`
+      + `• **Net Cash Flow:** **${netFlow >= 0 ? '+' : ''}${formatCurrency(netFlow)}** (${netFlow >= 0 ? 'Surplus' : 'Deficit'})\n`
+      + (topCatName ? `• **Top Category:** ${topCatName} (${formatCurrency(topCatAmt)})\n` : '')
+      + (summary.netWorth != null ? `• **Recorded Net Worth:** ${formatCurrency(summary.netWorth)}\n\n` : '\n')
+      + `How would you like to proceed? We can review your budgets, analyze a potential purchase, or track a new transaction.`;
+  }
 
   return {
-    reply,
+    reply: smartReply,
     suggestedQuestions: [
-      'How much have I spent this month?',
       'Where am I spending the most?',
-      'Show my budget status',
-      'Show my project spending and remaining budget',
-      'Can I afford a phone worth ₹25,000?',
+      'How can I save more?',
+      'Check my budget',
+      'Can I afford a purchase of ₹25,000?',
     ],
+    pendingTransaction: null,
   };
 }
 

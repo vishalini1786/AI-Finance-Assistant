@@ -43,6 +43,8 @@ import { Profile } from './pages/Profile';
 import { Reports } from './pages/Reports';
 import { SavingsGoals } from './pages/SavingsGoals';
 import { Investments } from './pages/Investments';
+import { Liabilities } from './pages/Liabilities';
+import { BankTransactions } from './pages/BankTransactions';
 
 // Admin Dashboard Pages
 import { AdminOverview }        from './pages/admin/AdminOverview';
@@ -95,6 +97,8 @@ function App() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/savings-goals" element={<SavingsGoals />} />
               <Route path="/investments" element={<Investments />} />
+              <Route path="/liabilities" element={<Liabilities />} />
+              <Route path="/bank-transactions" element={<BankTransactions />} />
             </Route>
 
             {/* 5. Admin Dashboard (role = admin required) */}

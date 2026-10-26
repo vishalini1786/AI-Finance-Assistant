@@ -154,22 +154,22 @@ export const FinancialHealth = () => {
           <div className="mb-8">
             <PersonalizedInsights
               pageContext="FINANCIAL_HEALTH"
-              title="Personalized Financial Health & Runway Recommendations"
+              title="FinMan Financial Health Advisor"
               subtitle="Action plan to stabilize cash flow, build liquidity runway, and balance stated priorities"
             />
           </div>
 
           {/* ── 5-Component Breakdown ──────────────────────────── */}
-          <div className="bg-white p-7 rounded-2xl border border-slate-200 shadow-sm mb-8">
-            <h2 className="text-base font-bold text-slate-800 mb-5">Recorded Metric Breakdown</h2>
+          <div className="bg-white dark:bg-slate-900 p-7 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mb-8">
+            <h2 className="text-base font-bold text-slate-800 dark:text-white mb-5">Recorded Metric Breakdown</h2>
             <div className="space-y-5">
               {metrics.map(({ key, label, value }) => (
                 <div key={key}>
-                  <div className="flex justify-between text-xs font-bold mb-2">
+                  <div className="flex justify-between text-xs font-bold mb-2 text-slate-700 dark:text-slate-300">
                     <span>{label}</span>
                     <span>{value} / 100</span>
                   </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-700 ${barColor(value)}`}
                       style={{ width: `${value}%` }}
@@ -184,22 +184,22 @@ export const FinancialHealth = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             {/* Strengths */}
-            <div className="bg-white border border-emerald-200 p-6 rounded-2xl">
-              <h3 className="text-xs font-black text-emerald-950 uppercase flex items-center gap-2 mb-4">
+            <div className="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/50 p-6 rounded-2xl">
+              <h3 className="text-xs font-black text-emerald-950 dark:text-emerald-400 uppercase flex items-center gap-2 mb-4">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                 Recorded Strengths
               </h3>
               {strengths.length === 0 ? (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   No strong areas yet. Add income, savings, and assets to build your score.
                 </p>
               ) : (
                 <ul className="space-y-2">
                   {strengths.map(({ key, label, value, detail }) => (
-                    <li key={key} className="text-xs text-slate-700">
-                      <span className="font-bold text-emerald-700">{label}</span>
-                      <span className="text-slate-500"> — {value}/100</span>
-                      <p className="text-[11px] text-slate-500 mt-0.5">{detail}</p>
+                    <li key={key} className="text-xs text-slate-700 dark:text-slate-300">
+                      <span className="font-bold text-emerald-700 dark:text-emerald-400">{label}</span>
+                      <span className="text-slate-500 dark:text-slate-400"> — {value}/100</span>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{detail}</p>
                     </li>
                   ))}
                 </ul>
@@ -207,28 +207,28 @@ export const FinancialHealth = () => {
             </div>
 
             {/* Review Areas — generated from actual metric values */}
-            <div className="bg-white border border-amber-200 p-6 rounded-2xl">
-              <h3 className="text-xs font-black text-amber-950 uppercase flex items-center gap-2 mb-4">
+            <div className="bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/50 p-6 rounded-2xl">
+              <h3 className="text-xs font-black text-amber-950 dark:text-amber-400 uppercase flex items-center gap-2 mb-4">
                 <AlertTriangle className="w-5 h-5 text-amber-600" />
                 Review Areas
               </h3>
               {reviewAreas.length === 0 ? (
-                <div className="flex items-center gap-2 text-xs text-emerald-700 font-semibold">
+                <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 font-semibold">
                   <TrendingUp className="w-4 h-4" />
                   No major review areas at the moment. Keep it up!
                 </div>
               ) : (
                 <ul className="space-y-4">
                   {reviewAreas.map(({ key, label, value, detail, suggestion }) => (
-                    <li key={key} className="border-b border-amber-100 pb-3 last:border-0 last:pb-0">
+                    <li key={key} className="border-b border-amber-100 dark:border-amber-950 pb-3 last:border-0 last:pb-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-xs font-bold text-amber-800">{label}</span>
-                        <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                        <span className="text-xs font-bold text-amber-800 dark:text-amber-300">{label}</span>
+                        <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full">
                           {value}/100
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-600 mb-1">{detail}</p>
-                      <p className="text-[11px] text-slate-500 italic">💡 {suggestion}</p>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mb-1">{detail}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">💡 {suggestion}</p>
                     </li>
                   ))}
                 </ul>

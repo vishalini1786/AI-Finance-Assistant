@@ -35,17 +35,23 @@ async function create({ userId, goalName, targetAmount, currentAmount, targetDat
 }
 
 async function update(goalId, userId, fields) {
-  const status = fields.status || 'IN_PROGRESS';
+  const currentAmount = fields.currentAmount !== undefined && fields.currentAmount !== null && fields.currentAmount !== '' && !isNaN(Number(fields.currentAmount))
+    ? Number(fields.currentAmount)
+    : null;
 
   const result = await db.query(
     `UPDATE financial_goals
-     SET goal_name = $1, target_amount = $2, current_amount = $3,
-         target_date = $4, status = $5, updated_at = NOW()
+     SET goal_name = COALESCE($1, goal_name),
+         target_amount = COALESCE($2, target_amount),
+         current_amount = COALESCE($3, current_amount),
+         target_date = $4,
+         status = COALESCE($5, status),
+         updated_at = NOW()
      WHERE goal_id = $6 AND user_id = $7
      RETURNING goal_id, user_id, goal_name, target_amount, current_amount,
                TO_CHAR(target_date, 'YYYY-MM-DD') AS target_date,
                status, created_at, updated_at`,
-    [fields.goalName, fields.targetAmount, fields.currentAmount, fields.targetDate || null, status, goalId, userId]
+    [fields.goalName || null, fields.targetAmount || null, currentAmount, fields.targetDate || null, fields.status || null, goalId, userId]
   );
   return result.rows[0] || null;
 }

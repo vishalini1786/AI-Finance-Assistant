@@ -22,6 +22,8 @@ const documentRoutes = require('./routes/documentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const liabilityRoutes = require('./routes/liabilityRoutes');
+const bankTransactionRoutes = require('./routes/bankTransactionRoutes');
 
 const { notFoundHandler, errorHandler } = require('./middleware/errorMiddleware');
 
@@ -119,6 +121,8 @@ const apiIndexHandler = (req, res) => {
       notifications: '/api/notifications',
       reports: '/api/reports',
       admin: '/api/admin',
+      liabilities: '/api/liabilities',
+      bankTransactions: '/api/bank-transactions',
     },
   });
 };
@@ -166,6 +170,8 @@ apiRouter.use('/documents', documentRoutes);
 apiRouter.use('/notifications', notificationRoutes);
 apiRouter.use('/reports', reportRoutes);
 apiRouter.use('/admin', adminRoutes);
+apiRouter.use('/liabilities', liabilityRoutes);
+apiRouter.use('/bank-transactions', bankTransactionRoutes);
 
 // Mount under /api (standard) and directly at root (resilient for base URLs without /api)
 app.use('/api', apiRouter);

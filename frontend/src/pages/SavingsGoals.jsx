@@ -71,10 +71,16 @@ export const SavingsGoals = () => {
     try {
       setSaving(true);
       const payload = {
-        ...form,
+        goalName: form.goalName,
         targetAmount: Number(form.targetAmount),
-        currentAmount: Number(form.currentAmount),
+        targetDate: form.targetDate || null,
+        status: form.status,
       };
+      // Only set initial currentAmount when creating a new goal.
+      // When editing existing goal details, preserve accumulated savings!
+      if (!editingId) {
+        payload.currentAmount = Number(form.currentAmount || 0);
+      }
       if (editingId) await goalService.updateGoal(editingId, payload);
       else await goalService.createGoal(payload);
       setForm(emptyForm);
@@ -200,7 +206,7 @@ export const SavingsGoals = () => {
       <div className="mb-6">
         <PersonalizedInsights
           pageContext="SAVINGS_GOALS"
-          title="Savings Strategy & Goal Feasibility"
+          title="FinMan Savings Advisor"
           subtitle="Required contribution calculations and timeline feasibility based on your cash flow"
         />
       </div>
@@ -275,17 +281,25 @@ export const SavingsGoals = () => {
 
           <div>
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Initial Saved Balance (₹)
+              {editingId ? 'Current Saved Balance (₹)' : 'Initial Saved Balance (₹)'}
             </label>
             <input
               type="number"
               min="0"
               step="0.01"
               placeholder="e.g. 50000"
+              disabled={Boolean(editingId)}
               value={form.currentAmount}
               onChange={(e) => setForm({ ...form, currentAmount: e.target.value })}
-              className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl p-2.5 text-xs w-full outline-none focus:border-finman-blue"
+              className={`border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl p-2.5 text-xs w-full outline-none focus:border-finman-blue ${
+                editingId ? 'opacity-70 bg-slate-50 dark:bg-slate-900 cursor-not-allowed' : ''
+              }`}
             />
+            {editingId && (
+              <p className="text-[10px] text-slate-400 mt-1">
+                Saved amount is maintained via recorded contributions.
+              </p>
+            )}
           </div>
 
           <div>

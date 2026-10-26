@@ -1,65 +1,29 @@
 // frontend/src/components/common/PersonalizedInsights.jsx
-// Module 8A: Personalized AI Financial Insights and Recommendations component
-// Grounded in verified PostgreSQL records, onboarding preferences, and actual user behavior.
+// Compact, single-container AI Advisor component per page.
+// Conforms to Module 2 requirements:
+// Advisor icon | Page-specific advisor heading | Refresh action
+// Multiple bullet points inside one single compact container.
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Sparkles,
-  AlertTriangle,
-  Info,
-  CheckCircle2,
-  TrendingUp,
-  X,
+  RefreshCw,
   ThumbsUp,
   ThumbsDown,
-  RefreshCw,
-  ExternalLink,
+  X,
   ChevronRight,
-  ShieldCheck,
   Check,
-  Clock,
-  Layers,
+  AlertCircle,
+  Lightbulb,
 } from 'lucide-react';
 import dashboardService from '../../services/dashboardService';
 
-const SEVERITY_STYLES = {
-  CRITICAL: {
-    badgeBg: 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900',
-    border: 'border-rose-200/80 dark:border-rose-900/50',
-    icon: AlertTriangle,
-    iconColor: 'text-rose-600 dark:text-rose-400',
-    glow: 'from-rose-500/10 via-transparent to-transparent',
-  },
-  WARNING: {
-    badgeBg: 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-900',
-    border: 'border-amber-200/80 dark:border-amber-900/50',
-    icon: AlertTriangle,
-    iconColor: 'text-amber-600 dark:text-amber-400',
-    glow: 'from-amber-500/10 via-transparent to-transparent',
-  },
-  OPPORTUNITY: {
-    badgeBg: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
-    border: 'border-emerald-200/80 dark:border-emerald-900/50',
-    icon: TrendingUp,
-    iconColor: 'text-emerald-600 dark:text-emerald-400',
-    glow: 'from-emerald-500/10 via-transparent to-transparent',
-  },
-  INFO: {
-    badgeBg: 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-900',
-    border: 'border-blue-200/80 dark:border-blue-900/50',
-    icon: Info,
-    iconColor: 'text-blue-600 dark:text-blue-400',
-    glow: 'from-blue-500/10 via-transparent to-transparent',
-  },
-};
-
 export const PersonalizedInsights = ({
   pageContext = 'DASHBOARD',
-  title = 'AI Financial Insights & Recommendations',
-  subtitle = 'Personalized analysis grounded in your onboarding profile and verified records',
-  limit = 5,
-  compact = false,
+  title = 'FinMan Financial Advisor',
+  subtitle = 'Grounded in your verified records, budgets, and financial habits',
+  limit = 4,
   className = '',
 }) => {
   const navigate = useNavigate();
@@ -68,53 +32,89 @@ export const PersonalizedInsights = ({
   const [refreshing, setRefreshing] = useState(false);
   const [feedbackState, setFeedbackState] = useState({});
   const [dismissedIds, setDismissedIds] = useState(new Set());
+  const [fetchError, setFetchError] = useState(null);
 
-  const fetchInsights = useCallback(async (isRefresh = false) => {
-    try {
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
+  const fetchInsights = useCallback(
+    async (isRefresh = false) => {
+      try {
+        if (isRefresh) setRefreshing(true);
+        else setLoading(true);
+        setFetchError(null);
 
-      const params = { status: 'ACTIVE' };
-      if (pageContext && pageContext !== 'ALL') {
-        params.page_context = pageContext;
-      }
-
-      let data = [];
-      if (isRefresh) {
-        data = await dashboardService.refreshInsights();
+        const params = { status: 'ACTIVE' };
         if (pageContext && pageContext !== 'ALL') {
-          data = data.filter((item) => !item.page_context || item.page_context === pageContext || item.page_context === 'DASHBOARD');
+          params.page_context = pageContext;
         }
-      } else {
-        data = await dashboardService.getInsights(params);
-      }
 
-      setInsights(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('[PersonalizedInsights] Failed to load insights:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [pageContext]);
+        let data = [];
+        if (isRefresh) {
+          data = await dashboardService.refreshInsights({
+            page_context: pageContext,
+            pageContext,
+          });
+          if (pageContext && pageContext !== 'ALL') {
+            data = data.filter((item) => item.page_context === pageContext);
+          }
+        } else {
+          data = await dashboardService.getInsights(params);
+          if (pageContext && pageContext !== 'ALL') {
+            data = data.filter((item) => item.page_context === pageContext);
+          }
+        }
+
+        // Deduplicate insights by title to prevent repeated recommendations
+        const seenTitles = new Set();
+        const unique = [];
+        for (const item of Array.isArray(data) ? data : []) {
+          const key = (item.title || item.message || '').trim().toLowerCase();
+          if (!seenTitles.has(key)) {
+            seenTitles.add(key);
+            unique.push(item);
+          }
+        }
+
+        setInsights(unique);
+      } catch (err) {
+        console.warn('[PersonalizedInsights] Unable to load advisor recommendations:', err.message);
+        setFetchError('Advisor suggestions are temporarily unavailable.');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [pageContext]
+  );
 
   useEffect(() => {
     fetchInsights();
   }, [fetchInsights]);
 
+  // Listen to global financial & expense updates to automatically refresh suggestions
+  useEffect(() => {
+    const handleUpdate = () => {
+      fetchInsights(true).catch(() => null);
+    };
+    window.addEventListener('finman:expense-updated', handleUpdate);
+    window.addEventListener('finman:financial-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('finman:expense-updated', handleUpdate);
+      window.removeEventListener('finman:financial-updated', handleUpdate);
+    };
+  }, [fetchInsights]);
+
   const handleDismiss = async (insightId, e) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     try {
       setDismissedIds((prev) => new Set([...prev, insightId]));
       await dashboardService.dismissInsight(insightId);
       setInsights((prev) => prev.filter((i) => i.insight_id !== insightId));
     } catch (err) {
-      console.error('[PersonalizedInsights] Failed to dismiss insight:', err);
+      console.error('[PersonalizedInsights] Failed to dismiss recommendation:', err);
     }
   };
 
   const handleFeedback = async (insightId, feedbackValue, e) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     try {
       setFeedbackState((prev) => ({ ...prev, [insightId]: feedbackValue }));
       await dashboardService.submitInsightFeedback(insightId, feedbackValue);
@@ -127,71 +127,96 @@ export const PersonalizedInsights = ({
     .filter((item) => !dismissedIds.has(item.insight_id))
     .slice(0, limit);
 
+  // Compact Loading State
   if (loading) {
     return (
-      <div className={`p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm animate-pulse ${className}`}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="h-5 bg-slate-200 dark:bg-slate-800 rounded w-64"></div>
-          <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-20"></div>
+      <div
+        className={`p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 animate-pulse ${className}`}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-indigo-200 dark:bg-indigo-900/50" />
+            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-44" />
+          </div>
+          <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16" />
         </div>
-        <div className="space-y-3">
-          <div className="h-24 bg-slate-100 dark:bg-slate-800/60 rounded-xl"></div>
-          <div className="h-24 bg-slate-100 dark:bg-slate-800/60 rounded-xl"></div>
+        <div className="space-y-2 pl-2">
+          <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-5/6" />
+          <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-4/6" />
         </div>
       </div>
     );
   }
 
+  // Graceful Error State
+  if (fetchError && visibleInsights.length === 0) {
+    return (
+      <div
+        className={`p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 ${className}`}
+      >
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span className="font-bold text-slate-700 dark:text-slate-300">{title}</span>
+          <span className="text-[11px] text-slate-400">— {fetchError}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => fetchInsights(true)}
+          className="text-finman-blue dark:text-sky-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+        >
+          <RefreshCw className="w-3 h-3" /> Retry
+        </button>
+      </div>
+    );
+  }
+
+  // Friendly Empty State
   if (visibleInsights.length === 0) {
     return (
-      <div className={`p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm ${className}`}>
+      <div
+        className={`p-4 rounded-2xl bg-gradient-to-r from-blue-50/60 via-indigo-50/30 to-slate-50/40 dark:from-slate-900 dark:via-slate-900/90 dark:to-indigo-950/20 border border-blue-200/60 dark:border-slate-800 ${className}`}
+      >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+            <div className="p-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900/50">
               <Sparkles className="w-4 h-4" />
             </div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h3>
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h3>
           </div>
           <button
+            type="button"
             onClick={() => fetchInsights(true)}
             disabled={refreshing}
-            className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1 transition-colors"
-            title="Recalculate insights"
+            className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1 transition-colors cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin text-indigo-600' : ''}`} />
+            <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
-        <div className="py-4 text-center">
-          <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <p className="text-xs font-bold text-slate-700 dark:text-slate-300">All indicators healthy</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Your records are consistent with your goals and budget limits. Log new transactions to receive fresh contextual insights.
-          </p>
-        </div>
+        <p className="text-xs text-slate-600 dark:text-slate-300 pl-8 leading-relaxed">
+          All records look balanced. As you add more transactions and update goals, FinMan will surface tailored, calm observations here.
+        </p>
       </div>
     );
   }
 
+  // Required Layout: One single compact container with concise bullet points
   return (
-    <div className={`rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden ${className}`}>
-      {/* Header */}
-      <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+    <div
+      className={`rounded-2xl bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-slate-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/30 border border-blue-200/70 dark:border-slate-800 shadow-xs p-4 sm:p-5 transition-colors ${className}`}
+    >
+      {/* Top Header Row: Icon | Page-Specific Advisor Title | Refresh Action */}
+      <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-blue-100/80 dark:border-slate-800/80">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-sm shadow-indigo-500/20">
+          <div className="p-1.5 rounded-xl bg-indigo-600 text-white shadow-xs">
             <Sparkles className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
               {title}
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-900">
-                Live &amp; Grounded
-              </span>
             </h3>
             {subtitle && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
                 {subtitle}
               </p>
             )}
@@ -199,139 +224,109 @@ export const PersonalizedInsights = ({
         </div>
 
         <button
+          type="button"
           onClick={() => fetchInsights(true)}
           disabled={refreshing}
-          className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center gap-1.5 transition-all"
-          title="Recalculate personalized insights"
+          className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/70 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+          title="Recalculate advisor recommendations"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-indigo-600' : ''}`} />
-          <span>{refreshing ? 'Analyzing...' : 'Refresh'}</span>
+          <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin text-indigo-600 dark:text-indigo-400' : ''}`} />
+          <span>{refreshing ? 'Updating...' : 'Refresh'}</span>
         </button>
       </div>
 
-      {/* Insights List */}
-      <div className="p-4 space-y-3">
+      {/* Bullet Points Container (No separate full-width cards) */}
+      <ul className="space-y-2.5">
         {visibleInsights.map((insight) => {
-          const style = SEVERITY_STYLES[insight.severity] || SEVERITY_STYLES.INFO;
-          const IconComponent = style.icon;
           const currentFeedback = feedbackState[insight.insight_id] || insight.feedback;
 
+          // Build a clean, clear message from available recommendation fields
+          let bulletText = '';
+          if (insight.try_this) {
+            bulletText = insight.try_this;
+          } else if (insight.whats_happening) {
+            bulletText = insight.whats_happening;
+          } else if (insight.description) {
+            bulletText = insight.description;
+          } else if (insight.message) {
+            bulletText = insight.message;
+          } else {
+            bulletText = insight.title;
+          }
+
+          // Clean repetitive prefixes if any
+          bulletText = bulletText.replace(/^(suggestion|action|tip|recommendation):\s*/i, '');
+
           return (
-            <div
+            <li
               key={insight.insight_id}
-              className={`group relative p-4 rounded-xl border bg-gradient-to-r ${style.glow} bg-white dark:bg-slate-900/90 ${style.border} hover:shadow-md transition-all duration-200`}
+              className="flex items-start justify-between gap-2.5 text-xs text-slate-700 dark:text-slate-200 group"
             >
-              {/* Dismiss Button */}
-              <button
-                onClick={(e) => handleDismiss(insight.insight_id, e)}
-                className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                title="Dismiss this recommendation"
-                aria-label="Dismiss insight"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+              {/* Bullet point & text */}
+              <div className="flex items-start gap-2.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-finman-blue dark:bg-sky-400 mt-1.5 shrink-0" />
+                <div className="leading-relaxed">
+                  <span className="font-bold text-slate-900 dark:text-white mr-1.5">
+                    {insight.title}:
+                  </span>
+                  <span>{bulletText}</span>
 
-              {/* Title & Badges */}
-              <div className="flex items-start gap-2.5 pr-6">
-                <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${style.badgeBg}`}>
-                  <IconComponent className={`w-4 h-4 ${style.iconColor}`} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                      {insight.title}
-                    </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${style.badgeBg}`}>
-                      {insight.severity}
-                    </span>
-                    {insight.is_preliminary && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/50">
-                        Preliminary Data
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Explanation */}
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
-                    {insight.message}
-                  </p>
-
-                  {/* Data Grounding Pill */}
-                  {insight.data_grounding && (
-                    <div className="mt-2.5 flex items-start gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                      <ShieldCheck className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="text-slate-700 dark:text-slate-300">Data Grounding: </strong>
-                        {insight.data_grounding}
-                      </span>
-                    </div>
+                  {/* Inline Action Link */}
+                  {insight.action_link && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(insight.action_link)}
+                      className="ml-2 inline-flex items-center gap-0.5 text-finman-blue dark:text-sky-400 font-bold hover:underline cursor-pointer"
+                    >
+                      <span>{insight.action_text || 'Open'}</span>
+                      <ChevronRight className="w-3 h-3 inline" />
+                    </button>
                   )}
-
-                  {/* Expected Benefit Banner */}
-                  {insight.expected_benefit && (
-                    <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-200/50 dark:border-emerald-900/50">
-                      <TrendingUp className="w-3.5 h-3.5 shrink-0" />
-                      <span>Expected Benefit: {insight.expected_benefit}</span>
-                    </div>
-                  )}
-
-                  {/* Action & Feedback Footer */}
-                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                    {/* Action Button */}
-                    {insight.action_link ? (
-                      <button
-                        onClick={() => navigate(insight.action_link)}
-                        className="text-xs font-bold text-finman-blue dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 hover:underline transition-all"
-                      >
-                        <span>{insight.action_text || 'Take action'}</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    ) : (
-                      <div className="text-[10px] text-slate-400 font-medium">
-                        Insight active • Grounded analysis
-                      </div>
-                    )}
-
-                    {/* Feedback (Helpful / Unhelpful) */}
-                    <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span className="text-[10px] font-medium mr-1">Was this helpful?</span>
-                      <button
-                        onClick={(e) => handleFeedback(insight.insight_id, 'HELPFUL', e)}
-                        className={`p-1 rounded transition-colors ${
-                          currentFeedback === 'HELPFUL'
-                            ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 font-bold'
-                            : 'hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                        }`}
-                        title="Mark as helpful"
-                        aria-label="Helpful"
-                      >
-                        <ThumbsUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => handleFeedback(insight.insight_id, 'UNHELPFUL', e)}
-                        className={`p-1 rounded transition-colors ${
-                          currentFeedback === 'UNHELPFUL'
-                            ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 font-bold'
-                            : 'hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                        }`}
-                        title="Mark as unhelpful"
-                        aria-label="Unhelpful"
-                      >
-                        <ThumbsDown className="w-3.5 h-3.5" />
-                      </button>
-                      {currentFeedback && (
-                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold ml-1">
-                          Thanks!
-                        </span>
-                      )}
-                    </div>
-                  </div>
                 </div>
               </div>
-            </div>
+
+              {/* Compact Feedback & Dismiss Controls */}
+              <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  onClick={(e) => handleFeedback(insight.insight_id, 'HELPFUL', e)}
+                  className={`p-1 rounded transition-colors ${
+                    currentFeedback === 'HELPFUL'
+                      ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 font-bold'
+                      : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
+                  title="Helpful recommendation"
+                  aria-label="Helpful"
+                >
+                  <ThumbsUp className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleFeedback(insight.insight_id, 'UNHELPFUL', e)}
+                  className={`p-1 rounded transition-colors ${
+                    currentFeedback === 'UNHELPFUL'
+                      ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 font-bold'
+                      : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
+                  title="Not helpful"
+                  aria-label="Not helpful"
+                >
+                  <ThumbsDown className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleDismiss(insight.insight_id, e)}
+                  className="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors"
+                  title="Dismiss"
+                  aria-label="Dismiss recommendation"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 };

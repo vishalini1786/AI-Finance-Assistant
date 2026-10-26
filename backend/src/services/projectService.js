@@ -36,6 +36,8 @@ async function createProject(userId, projectData) {
     targetDate,
     status
   });
+  const aiInsightService = require('./aiInsightService');
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: 'PROJECTS' }).catch(() => null);
   return formatProject({ ...project, total_spent: 0 });
 }
 
@@ -116,7 +118,7 @@ async function createProjectExpense(projectId, userId, expenseData) {
   }
 
   const { expenseName, category, amount, expenseDate, paymentMode, description } = expenseData;
-  return await projectExpenseRepository.createProjectExpense({
+  const created = await projectExpenseRepository.createProjectExpense({
     projectId,
     userId,
     expenseName,
@@ -126,6 +128,9 @@ async function createProjectExpense(projectId, userId, expenseData) {
     paymentMode,
     description
   });
+  const aiInsightService = require('./aiInsightService');
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: 'PROJECTS' }).catch(() => null);
+  return created;
 }
 
 async function getProjectExpenses(projectId, userId) {

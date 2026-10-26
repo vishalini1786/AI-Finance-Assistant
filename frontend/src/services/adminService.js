@@ -46,8 +46,8 @@ const adminService = {
   },
 
   // ── AI Monitoring ────────────────────────────────────────────────
-  getAiMonitoring: async () => {
-    const res = await api.get('/admin/ai');
+  getAiMonitoring: async (check = false) => {
+    const res = await api.get('/admin/ai', { params: check ? { check: 'true' } : {} });
     return res.data.data;
   },
 
@@ -73,8 +73,10 @@ const adminService = {
     return res.data.data;
   },
 
-  deleteCategory: async (categoryId) => {
-    const res = await api.delete(`/admin/categories/${categoryId}`);
+  deleteCategory: async (categoryId, reassignToCategoryId = null) => {
+    const res = await api.delete(`/admin/categories/${categoryId}`, {
+      data: { reassignToCategoryId },
+    });
     return res.data.data;
   },
 };

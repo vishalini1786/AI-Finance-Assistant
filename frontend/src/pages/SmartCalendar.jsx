@@ -168,10 +168,10 @@ export const SmartCalendar = () => {
             </button>
 
             {/* Interactive Month & Year Selectors */}
-            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg p-1 shadow-xs text-xs font-bold text-slate-700">
+            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-1 shadow-xs text-xs font-bold text-slate-700 dark:text-slate-300">
               <button 
                 onClick={handleGoToday} 
-                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition-colors"
+                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-md font-semibold transition-colors"
                 title="Go to Current Real-World Date"
               >
                 Today
@@ -179,7 +179,7 @@ export const SmartCalendar = () => {
 
               <button 
                 onClick={handlePrevMonth} 
-                className="p-1 hover:bg-slate-100 rounded text-slate-600 transition-colors"
+                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-400 transition-colors"
                 title="Previous Month"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -191,10 +191,10 @@ export const SmartCalendar = () => {
                   setCurrentMonth(Number(e.target.value));
                   setSelectedDay(1);
                 }}
-                className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer px-1 py-0.5 hover:text-finman-blue"
+                className="bg-transparent font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer px-1 py-0.5 hover:text-finman-blue"
               >
                 {MONTH_NAMES.map((m, idx) => (
-                  <option key={m} value={idx}>{m}</option>
+                  <option key={m} value={idx} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{m}</option>
                 ))}
               </select>
 
@@ -204,16 +204,16 @@ export const SmartCalendar = () => {
                   setCurrentYear(Number(e.target.value));
                   setSelectedDay(1);
                 }}
-                className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer px-1 py-0.5 hover:text-finman-blue border-l border-slate-200 pl-2"
+                className="bg-transparent font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer px-1 py-0.5 hover:text-finman-blue border-l border-slate-200 dark:border-slate-700 pl-2"
               >
                 {YEARS.map((y) => (
-                  <option key={y} value={y}>{y}</option>
+                  <option key={y} value={y} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{y}</option>
                 ))}
               </select>
 
               <button 
                 onClick={handleNextMonth} 
-                className="p-1 hover:bg-slate-100 rounded text-slate-600 transition-colors"
+                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-400 transition-colors"
                 title="Next Month"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -231,13 +231,13 @@ export const SmartCalendar = () => {
         preselectedDate={preselectedDateStr}
       />
 
-      {error && <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}
+      {error && <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/40 dark:border-rose-900 p-4 text-sm font-semibold text-rose-700 dark:text-rose-300">{error}</div>}
       {loading && <div className="mb-6 text-center text-xs font-semibold text-slate-400">Loading saved financial events...</div>}
 
-      {/* Module 8A: Personalized Calendar Insights */}
+      {/* FinMan Calendar Advisor */}
       <PersonalizedInsights
         pageContext="CALENDAR"
-        title="Recurring Commitments & Cash Flow Timing"
+        title="FinMan Calendar Advisor"
         subtitle="Upcoming bills, subscription audits, and obligation buffers"
         className="mb-6"
       />
@@ -255,7 +255,7 @@ export const SmartCalendar = () => {
               className={`px-3.5 py-1.5 rounded-lg font-bold transition-all ${
                 activeFilter === tab
                   ? 'bg-finman-blue text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
               {tab}
@@ -264,24 +264,24 @@ export const SmartCalendar = () => {
         </div>
 
         {/* Quick Month Cash-Flow Snapshot */}
-        <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs">
+        <div className="flex items-center gap-4 bg-white dark:bg-slate-900 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
           <div className="flex items-center gap-1.5">
             <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500" />
-            <span className="text-slate-500 font-medium">Inflow:</span>
-            <span className="font-bold text-emerald-600">₹{totalInflow.toLocaleString('en-IN')}</span>
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Inflow:</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{totalInflow.toLocaleString('en-IN')}</span>
           </div>
-          <div className="w-px h-4 bg-slate-200"></div>
+          <div className="w-px h-4 bg-slate-200 dark:bg-slate-700"></div>
           <div className="flex items-center gap-1.5">
             <ArrowDownRight className="w-3.5 h-3.5 text-rose-500" />
-            <span className="text-slate-500 font-medium">Outflow:</span>
-            <span className="font-bold text-rose-600">₹{totalOutflow.toLocaleString('en-IN')}</span>
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Outflow:</span>
+            <span className="font-bold text-rose-600 dark:text-rose-400">₹{totalOutflow.toLocaleString('en-IN')}</span>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Dynamic Monthly Calendar Grid (2 Cols) */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-sm font-bold text-slate-800">
               {MONTH_NAMES[currentMonth]} {currentYear}

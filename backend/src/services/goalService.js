@@ -33,7 +33,7 @@ async function getGoal(goalId, userId) {
 async function createGoal(userId, fields) {
   const goal = await goalRepository.create({ userId, ...fields });
   const aiInsightService = require('./aiInsightService');
-  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: ['SAVINGS_GOALS', 'DASHBOARD'] }).catch(() => null);
   return formatGoal(goal);
 }
 
@@ -41,14 +41,14 @@ async function updateGoal(goalId, userId, fields) {
   const goal = await goalRepository.update(goalId, userId, fields);
   if (!goal) throw notFound();
   const aiInsightService = require('./aiInsightService');
-  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: ['SAVINGS_GOALS', 'DASHBOARD'] }).catch(() => null);
   return formatGoal(goal);
 }
 
 async function deleteGoal(goalId, userId) {
   if (!(await goalRepository.remove(goalId, userId))) throw notFound();
   const aiInsightService = require('./aiInsightService');
-  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: ['SAVINGS_GOALS', 'DASHBOARD'] }).catch(() => null);
 }
 
 async function recordContribution(goalId, userId, { amount, contributionDate, note }) {
@@ -71,7 +71,7 @@ async function recordContribution(goalId, userId, { amount, contributionDate, no
   if (!result) throw notFound();
 
   const aiInsightService = require('./aiInsightService');
-  aiInsightService.refreshInsightsForUser(userId).catch(() => null);
+  aiInsightService.refreshInsightsForUser(userId, { pageContext: ['SAVINGS_GOALS', 'DASHBOARD'] }).catch(() => null);
 
   return {
     goal: formatGoal(result.goal),

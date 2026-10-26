@@ -153,12 +153,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_MODEL_CACHE: dict[str, Any] = {}
+
 def load_model(filename: str) -> Any:
+    if filename in _MODEL_CACHE:
+        return _MODEL_CACHE[filename]
     path = MODEL_DIR / filename
     if not path.exists():
         raise RuntimeError(f"Required model file is missing: {filename}")
-    with path.open("rb") as handle:
-        return pickle.load(handle)
+    try:
+        import joblib
+        loaded = joblib.load(path)
+    except Exception:
+        with path.open("rb") as handle:
+            loaded = pickle.load(handle)
+    _MODEL_CACHE[filename] = loaded
+    return loaded
 
 class PredictionRequest(BaseModel):
     features: Optional[list[Any]] = None
@@ -244,6 +254,9 @@ def predict_category(request: PredictionRequest):
             for f in meta.get("classification_features", []):
                 if f not in df.columns:
                     df[f] = 0.0 if f not in ["payment_mode_clean", "location_clean", "notes_clean"] else ""
+            for text_col in ["payment_mode_clean", "location_clean", "notes_clean", "user_id"]:
+                if text_col in df.columns:
+                    df[text_col] = df[text_col].apply(lambda v: "" if v is None or v == 0 or v == "0" else str(v))
             df = df[meta["classification_features"]]
             prediction = model.predict(df)
         elif request.features:
@@ -252,8 +265,14 @@ def predict_category(request: PredictionRequest):
             raise ValueError("No features provided")
         return {"category": str(prediction[0])}
     except Exception as exc:
-        logger.error("Category prediction error: %s", exc)
-        raise HTTPException(status_code=503, detail="Category prediction is unavailable") from exc
+        logger.warning("Category model prediction failed, falling back to heuristics: %s", exc)
+        notes = ""
+        if request.feature_dict:
+            notes = str(request.feature_dict.get("notes_clean") or request.feature_dict.get("notes") or "").lower()
+        for cat, keywords in CATEGORY_KEYWORDS.items():
+            if any(k in notes for k in keywords):
+                return {"category": cat, "fallback": True}
+        return {"category": "Other", "fallback": True}
 
 # =====================================================================
 # OCR & PARSING LOGIC

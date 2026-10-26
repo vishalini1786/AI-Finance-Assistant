@@ -18,6 +18,8 @@ import {
   Shield,
   Wallet,
   X,
+  CreditCard,
+  Landmark,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -27,6 +29,7 @@ const menuKeyMap = {
   '/dashboard': 'dashboard',
   '/income': 'income',
   '/expenses': 'expenses',
+  '/bank-transactions': 'bankTransactions',
   '/budget': 'budget',
   '/health': 'health',
   '/projects': 'projects',
@@ -34,6 +37,7 @@ const menuKeyMap = {
   '/calendar': 'calendar',
   '/savings-goals': 'savingsGoals',
   '/investments': 'investments',
+  '/liabilities': 'liabilities',
   '/reports': 'reports',
 };
 
@@ -41,6 +45,7 @@ const menuItems = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Income', path: '/income', icon: Wallet },
   { name: 'Expenses', path: '/expenses', icon: Receipt },
+  { name: 'Bank Transactions', path: '/bank-transactions', icon: Landmark },
   { name: 'Budgets & Goals', path: '/budget', icon: PieChart },
   { name: 'Financial Health', path: '/health', icon: HeartPulse },
   { name: 'Project Workspaces', path: '/projects', icon: FolderKanban },
@@ -48,6 +53,7 @@ const menuItems = [
   { name: 'Smart Calendar', path: '/calendar', icon: CalendarDays },
   { name: 'Savings & Goals', path: '/savings-goals', icon: PiggyBank },
   { name: 'Investments', path: '/investments', icon: TrendingUp },
+  { name: 'Liabilities', path: '/liabilities', icon: CreditCard },
   { name: 'Reports', path: '/reports', icon: FileText },
 ];
 

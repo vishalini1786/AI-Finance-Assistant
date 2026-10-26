@@ -15,7 +15,7 @@ async function findAllByUser(userId, { pageContext = null, status = 'ACTIVE' } =
   }
 
   if (pageContext && pageContext !== 'ALL') {
-    conditions.push(`(page_context = $${paramIdx} OR page_context = 'DASHBOARD' OR page_context = 'ALL')`);
+    conditions.push(`page_context = $${paramIdx}`);
     params.push(pageContext);
     paramIdx += 1;
   }
@@ -40,7 +40,36 @@ async function findAllByUser(userId, { pageContext = null, status = 'ACTIVE' } =
   `;
 
   const result = await db.query(query, params);
-  return result.rows;
+  return result.rows.map((row) => {
+    let whatsHappening = null;
+    let whyItMatters = null;
+    let tryThis = null;
+    let contextData = null;
+    let plainDesc = row.description;
+
+    if (row.description && typeof row.description === 'string' && row.description.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(row.description);
+        whatsHappening = parsed.whatsHappening || null;
+        whyItMatters = parsed.whyItMatters || null;
+        tryThis = parsed.tryThis || null;
+        contextData = parsed.contextData || null;
+        plainDesc = parsed.plainText || whatsHappening || row.description;
+      } catch (e) {
+        plainDesc = row.description;
+      }
+    }
+
+    return {
+      ...row,
+      description: plainDesc,
+      message: plainDesc,
+      whats_happening: whatsHappening,
+      why_it_matters: whyItMatters,
+      try_this: tryThis,
+      context_data: contextData,
+    };
+  });
 }
 
 async function upsertInsight({
@@ -77,7 +106,7 @@ async function upsertInsight({
       `UPDATE ai_insights
        SET title = $1, description = $2, severity = $3, page_context = $4,
            action_link = $5, action_text = $6, data_grounding = $7,
-           expected_benefit = $8, is_preliminary = $9, updated_at = NOW()
+           expected_benefit = $8, is_preliminary = $9, status = 'ACTIVE', updated_at = NOW()
        WHERE insight_id = $10 AND user_id = $11
        RETURNING *`,
       [
@@ -159,10 +188,42 @@ async function setFeedback(insightId, userId, feedback) {
   return result.rows[0] || null;
 }
 
+async function expireStaleInsights(userId, pageContext = null, activeTypes = []) {
+  if (!pageContext || pageContext === 'ALL') {
+    if (activeTypes.length === 0) {
+      await db.query(
+        `UPDATE ai_insights SET status = 'EXPIRED', updated_at = NOW() WHERE user_id = $1 AND status = 'ACTIVE'`,
+        [userId]
+      );
+    } else {
+      await db.query(
+        `UPDATE ai_insights SET status = 'EXPIRED', updated_at = NOW()
+         WHERE user_id = $1 AND status = 'ACTIVE' AND NOT (insight_type = ANY($2::text[]))`,
+        [userId, activeTypes]
+      );
+    }
+  } else {
+    if (activeTypes.length === 0) {
+      await db.query(
+        `UPDATE ai_insights SET status = 'EXPIRED', updated_at = NOW()
+         WHERE user_id = $1 AND page_context = $2 AND status = 'ACTIVE'`,
+        [userId, pageContext]
+      );
+    } else {
+      await db.query(
+        `UPDATE ai_insights SET status = 'EXPIRED', updated_at = NOW()
+         WHERE user_id = $1 AND page_context = $2 AND status = 'ACTIVE' AND NOT (insight_type = ANY($3::text[]))`,
+        [userId, pageContext, activeTypes]
+      );
+    }
+  }
+}
+
 module.exports = {
   findAllByUser,
   upsertInsight,
   markRead,
   dismissInsight,
   setFeedback,
+  expireStaleInsights,
 };

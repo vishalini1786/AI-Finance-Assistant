@@ -9,20 +9,147 @@ const env = require('../config/env');
  * - Graceful fallback on missing key, timeout, rate limit, or invalid response.
  */
 
+let cachedHealthCheck = {
+  status: 'NOT_CHECKED',
+  statusLabel: 'Health check not yet performed',
+  healthy: null,
+  latencyMs: null,
+  message: null,
+  checkedAt: null,
+};
+
 function isConfigured() {
-  return Boolean(env.gemini && env.gemini.apiKey && env.gemini.apiKey.trim().length > 0);
+  const key = env.gemini && env.gemini.apiKey;
+  if (!key || typeof key !== 'string') return false;
+  const trimmed = key.trim();
+  if (trimmed.length === 0) return false;
+  if (
+    trimmed === 'YOUR_GEMINI_API_KEY' ||
+    trimmed === 'your_api_key_here' ||
+    trimmed === 'YOUR_API_KEY' ||
+    trimmed === 'PLACEHOLDER'
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Perform a lightweight safe probe of the Google Gemini API.
+ * Results are cached for 60 seconds to prevent unnecessary quota usage.
+ */
+async function runHealthCheck(force = false) {
+  if (!isConfigured()) {
+    cachedHealthCheck = {
+      status: 'MISSING_CREDENTIALS',
+      statusLabel: 'Missing credentials',
+      healthy: false,
+      latencyMs: null,
+      message: 'GEMINI_API_KEY environment variable is not configured. FinMan is operating in deterministic financial reasoning mode.',
+      checkedAt: new Date().toISOString(),
+    };
+    return cachedHealthCheck;
+  }
+
+  // Use cached result if within 60s window unless force refresh requested
+  if (
+    !force &&
+    cachedHealthCheck.checkedAt &&
+    Date.now() - new Date(cachedHealthCheck.checkedAt).getTime() < 60000
+  ) {
+    return cachedHealthCheck;
+  }
+
+  const start = Date.now();
+  const res = await generateContent({
+    prompt: 'Health check probe: reply with PONG',
+    systemInstruction: '',
+    temperature: 0,
+    timeoutMs: 6000,
+  });
+  const latencyMs = Date.now() - start;
+
+  if (res.success) {
+    cachedHealthCheck = {
+      status: 'OPERATIONAL',
+      statusLabel: 'Configured and responding',
+      healthy: true,
+      latencyMs,
+      message: 'Google Gemini Generative Language API is responding normally.',
+      checkedAt: new Date().toISOString(),
+    };
+  } else if (res.status === 'RATE_LIMIT') {
+    cachedHealthCheck = {
+      status: 'RATE_LIMIT',
+      statusLabel: 'Provider quota or rate limit reached',
+      healthy: false,
+      latencyMs,
+      message: 'Google Gemini API quota or rate limit has been reached.',
+      checkedAt: new Date().toISOString(),
+    };
+  } else if (res.status === 'AUTH_OR_QUOTA_ERROR') {
+    cachedHealthCheck = {
+      status: 'AUTH_FAILED',
+      statusLabel: 'Configuration present but provider health check failed',
+      healthy: false,
+      latencyMs,
+      message: 'Configured GEMINI_API_KEY was rejected by Google API (authentication error or disabled API).',
+      checkedAt: new Date().toISOString(),
+    };
+  } else if (res.status === 'TIMEOUT') {
+    cachedHealthCheck = {
+      status: 'TIMEOUT',
+      statusLabel: 'Provider temporarily unavailable',
+      healthy: false,
+      latencyMs,
+      message: 'Google Gemini API request timed out after 6000ms.',
+      checkedAt: new Date().toISOString(),
+    };
+  } else {
+    cachedHealthCheck = {
+      status: 'ERROR',
+      statusLabel: 'Configuration present but provider health check failed',
+      healthy: false,
+      latencyMs,
+      message: res.message || 'Health check probe failed.',
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  return cachedHealthCheck;
 }
 
 function getGeminiDiagnostics() {
   const configured = isConfigured();
+  const status = configured
+    ? (cachedHealthCheck.status === 'NOT_CHECKED' ? 'operational' : (cachedHealthCheck.healthy ? 'operational' : cachedHealthCheck.status.toLowerCase()))
+    : 'unconfigured';
+  const statusLabel = configured
+    ? (cachedHealthCheck.statusLabel || 'Configured and responding')
+    : 'Missing credentials';
+
   return {
     provider: 'Google Gemini',
     configured,
     model: env.gemini?.model || 'gemini-1.5-flash',
-    status: configured ? 'operational' : 'unconfigured',
+    status,
+    statusLabel,
+    healthy: configured ? (cachedHealthCheck.healthy !== false) : false,
+    healthDetails: configured
+      ? cachedHealthCheck
+      : {
+          status: 'MISSING_CREDENTIALS',
+          statusLabel: 'Missing credentials',
+          healthy: false,
+          latencyMs: null,
+          message: 'GEMINI_API_KEY environment variable is not configured. FinMan is operating in deterministic financial reasoning mode.',
+          checkedAt: new Date().toISOString(),
+        },
     note: configured
-      ? 'Gemini API key is configured server-side.'
+      ? (cachedHealthCheck.message || 'Gemini API key is configured server-side.')
       : 'GEMINI_API_KEY environment variable is not set. Conversational assistant is using deterministic financial reasoning.',
+    expectedEnvVar: 'GEMINI_API_KEY',
+    fallbackMode: 'Deterministic SQL Grounding Active',
   };
 }
 
@@ -183,9 +310,29 @@ Respond ONLY with valid JSON matching this schema:
   }
 }
 
+/**
+ * Perform a safe diagnostic connection test without exposing keys or sensitive data.
+ */
+async function testConnection() {
+  const result = await runHealthCheck(true);
+  const diag = getGeminiDiagnostics();
+  return {
+    success: result.healthy === true,
+    status: result.status,
+    statusLabel: result.statusLabel,
+    healthy: result.healthy === true,
+    latencyMs: result.latencyMs,
+    message: result.message,
+    model: diag.model,
+    testedAt: result.checkedAt,
+  };
+}
+
 module.exports = {
   isConfigured,
   getGeminiDiagnostics,
+  runHealthCheck,
+  testConnection,
   generateContent,
   extractFinancialIntent,
 };

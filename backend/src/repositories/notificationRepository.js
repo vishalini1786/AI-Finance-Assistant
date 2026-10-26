@@ -21,7 +21,24 @@ async function markRead(notificationId, userId) {
   return result.rows[0] || null;
 }
 
-async function createIfMissing({ userId, title, message, notificationType, link }) {
+async function createIfMissing({ userId, title, message, notificationType, link, deliveryDate }) {
+  if (notificationType === 'DAILY_REMINDER') {
+    const targetDate = deliveryDate || new Date().toISOString().slice(0, 10);
+    const result = await db.query(
+      `INSERT INTO notifications (user_id, title, message, notification_type, link)
+       SELECT $1::int, $2::text, $3::text, $4::varchar, $5::varchar
+       WHERE NOT EXISTS (
+         SELECT 1 FROM notifications
+         WHERE user_id = $1::int
+           AND notification_type = 'DAILY_REMINDER'
+           AND DATE(created_at) = $6::date
+       )
+       RETURNING *`,
+      [userId, title, message, notificationType, link || '/expenses', targetDate]
+    );
+    return result.rows[0] || null;
+  }
+
   const result = await db.query(
     `INSERT INTO notifications (user_id, title, message, notification_type, link)
      SELECT $1::int, $2::text, $3::text, $4::varchar, $5::varchar

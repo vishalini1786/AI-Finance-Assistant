@@ -104,6 +104,13 @@ export const Expenses = () => {
 
   useEffect(() => {
     loadData();
+    const handleUpdate = () => {
+      loadData();
+    };
+    window.addEventListener('finman:expense-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('finman:expense-updated', handleUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -515,7 +522,7 @@ export const Expenses = () => {
       {activeTab === 'expenses' && (
         <PersonalizedInsights
           pageContext="EXPENSES"
-          title="Expense Analysis & Spending Optimization"
+          title="FinMan Expense Advisor"
           subtitle="Contextual category observations and spending pace alerts based on your habits"
           className="mb-6"
         />
@@ -673,22 +680,22 @@ export const Expenses = () => {
       </div>
 
       {modalMode && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-bold text-slate-900">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                 {modalMode === 'deficit-warning'
                   ? 'Spending Deficit Warning'
                   : `${editingId ? 'Edit' : 'Add'} ${modalMode.includes('expenses') ? 'Expense' : 'Income'}`}
               </h3>
-              <button onClick={closeModal} type="button">
-                <X className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+              <button onClick={closeModal} type="button" className="cursor-pointer text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {modalMode === 'type-warning' && pendingDocumentScan ? (
               <div className="space-y-4 text-xs">
-                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-950">
+                <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-950 dark:text-amber-200">
                   <strong className="block mb-1">This document appears to be a salary slip, not an expense receipt. Would you like to process it as income instead?</strong>
                   <p>Review it as income, continue with expense entry, or cancel. No income or expense will be recorded until you confirm the reviewed form.</p>
                 </div>
@@ -696,14 +703,14 @@ export const Expenses = () => {
                   <button
                     type="button"
                     onClick={reviewPendingAsIncome}
-                    className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700"
+                    className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 cursor-pointer"
                   >
                     Review as Income
                   </button>
                   <button
                     type="button"
                     onClick={() => applyExpenseExtraction(pendingDocumentScan)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                   >
                     Continue as Expense
                   </button>
@@ -714,7 +721,7 @@ export const Expenses = () => {
                       setModalMode(null);
                       setOcrMessage('');
                     }}
-                    className="w-full px-4 py-2 text-slate-500 font-bold hover:bg-slate-50"
+                    className="w-full px-4 py-2 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer font-bold"
                   >
                     Cancel
                   </button>
@@ -722,36 +729,36 @@ export const Expenses = () => {
               </div>
             ) : modalMode === 'deficit-warning' && deficitWarning ? (
               <div className="space-y-4 text-xs">
-                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 flex items-start gap-2.5">
+                <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-200 flex items-start gap-2.5">
                   <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                   <div>
                     <strong className="block font-bold text-xs mb-1">
                       Projected Monthly Deficit Detected
                     </strong>
-                    <p className="text-[11px] leading-relaxed text-rose-800">
+                    <p className="text-[11px] leading-relaxed text-rose-800 dark:text-rose-300">
                       Recording this expense will cause your spending for{' '}
                       <strong>{deficitWarning.month}</strong> to exceed your total recorded income by{' '}
-                      <strong className="text-rose-950 font-black">{formatCurrency(deficitWarning.projectedDeficit)}</strong>.
+                      <strong className="text-rose-950 dark:text-rose-200 font-black">{formatCurrency(deficitWarning.projectedDeficit)}</strong>.
                     </p>
                   </div>
                 </div>
 
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 space-y-2 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Recorded Month Income:</span>
-                    <strong className="text-emerald-700">{formatCurrency(deficitWarning.monthIncome)}</strong>
+                    <span className="text-slate-500 dark:text-slate-400">Recorded Month Income:</span>
+                    <strong className="text-emerald-700 dark:text-emerald-400">{formatCurrency(deficitWarning.monthIncome)}</strong>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Current Month Expenses:</span>
-                    <span className="text-slate-700 font-semibold">{formatCurrency(deficitWarning.currentExpenses)}</span>
+                    <span className="text-slate-500 dark:text-slate-400">Current Month Expenses:</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(deficitWarning.currentExpenses)}</span>
                   </div>
-                  <div className="flex justify-between border-t border-slate-200 pt-1.5">
-                    <span className="text-slate-500">New Expense Amount:</span>
-                    <strong className="text-rose-600">+{formatCurrency(deficitWarning.newExpense)}</strong>
+                  <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1.5">
+                    <span className="text-slate-500 dark:text-slate-400">New Expense Amount:</span>
+                    <strong className="text-rose-600 dark:text-rose-400">+{formatCurrency(deficitWarning.newExpense)}</strong>
                   </div>
-                  <div className="flex justify-between border-t border-slate-200 pt-1.5 font-bold">
-                    <span className="text-rose-700">Projected Deficit:</span>
-                    <span className="text-rose-700 font-black">-{formatCurrency(deficitWarning.projectedDeficit)}</span>
+                  <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1.5 font-bold">
+                    <span className="text-rose-700 dark:text-rose-400">Projected Deficit:</span>
+                    <span className="text-rose-700 dark:text-rose-400 font-black">-{formatCurrency(deficitWarning.projectedDeficit)}</span>
                   </div>
                 </div>
 
@@ -770,7 +777,7 @@ export const Expenses = () => {
                       });
                       setModalMode('income');
                     }}
-                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <span>Add Missing Income Instead</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -779,7 +786,7 @@ export const Expenses = () => {
                   <button
                     type="button"
                     onClick={() => setModalMode('expenses')}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors"
+                    className="w-full py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs transition-colors cursor-pointer"
                   >
                     Go Back & Edit Expense
                   </button>
@@ -788,7 +795,7 @@ export const Expenses = () => {
                     type="button"
                     disabled={saving}
                     onClick={() => executeSaveExpense(true)}
-                    className="w-full py-2 px-3 rounded-xl text-rose-600 hover:bg-rose-50 text-center font-bold text-xs transition-colors disabled:opacity-50"
+                    className="w-full py-2 px-3 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-center font-bold text-xs transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {saving ? 'Recording...' : 'Continue & Record Expense Anyway'}
                   </button>
@@ -796,10 +803,10 @@ export const Expenses = () => {
               </div>
             ) : modalMode.startsWith('choice-') ? (
               <div className="space-y-3 text-xs">
-                <p className="font-semibold text-slate-600">How would you like to add this {activeTab === 'expenses' ? 'expense' : 'income'}?</p>
-                <button type="button" onClick={selectManualEntry} className="w-full p-4 rounded-xl border border-slate-200 text-left hover:border-finman-blue"><strong>Enter Manually</strong><span className="block text-slate-400 mt-1">Use the existing form.</span></button>
-                <label className="block w-full p-4 rounded-xl border border-slate-200 text-left hover:border-finman-blue cursor-pointer"><strong>Scan or Upload Document</strong><span className="block text-slate-400 mt-1">PNG, JPG/JPEG, or PDF. Review extracted fields before saving.</span><input type="file" accept={DOCUMENT_UPLOAD_ACCEPT} onChange={handleScan} disabled={ocrLoading} className="mt-3 block w-full text-xs" /></label>
-                {ocrMessage && <p className="text-slate-500">{ocrMessage}</p>}
+                <p className="font-semibold text-slate-600 dark:text-slate-300">How would you like to add this {activeTab === 'expenses' ? 'expense' : 'income'}?</p>
+                <button type="button" onClick={selectManualEntry} className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 text-left hover:border-finman-blue dark:text-white cursor-pointer"><strong>Enter Manually</strong><span className="block text-slate-400 mt-1">Use the existing form.</span></button>
+                <label className="block w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 text-left hover:border-finman-blue cursor-pointer dark:text-white"><strong>Scan or Upload Document</strong><span className="block text-slate-400 mt-1">PNG, JPG/JPEG, or PDF. Review extracted fields before saving.</span><input type="file" accept={DOCUMENT_UPLOAD_ACCEPT} onChange={handleScan} disabled={ocrLoading} className="mt-3 block w-full text-xs" /></label>
+                {ocrMessage && <p className="text-slate-500 dark:text-slate-400">{ocrMessage}</p>}
               </div>
             ) : modalMode === 'expenses' ? (
               <form onSubmit={saveExpense} className="space-y-4 text-xs">
@@ -837,7 +844,7 @@ export const Expenses = () => {
                 )}
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Merchant / Recipient</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Merchant / Recipient</label>
                   <input
                     type="text"
                     value={expenseForm.merchantName}
@@ -845,12 +852,12 @@ export const Expenses = () => {
                       setExpenseForm({ ...expenseForm, merchantName: e.target.value });
                     }}
                     placeholder="e.g. grocery store, fuel station"
-                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                    className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Amount</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Amount</label>
                     <input
                       type="number"
                       min="0.01"
@@ -860,54 +867,54 @@ export const Expenses = () => {
                       onChange={(e) => {
                         setExpenseForm({ ...expenseForm, amount: e.target.value });
                       }}
-                      className={`w-full border ${ocrWarning && !ocrConfirmed ? 'border-amber-400 bg-amber-50/20' : 'border-slate-200'} rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium`}
+                      className={`w-full border ${ocrWarning && !ocrConfirmed ? 'border-amber-400 bg-amber-50/20' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium`}
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Date</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Date</label>
                     <input
                       type="date"
                       required
                       value={expenseForm.expenseDate}
                       onChange={(e) => setExpenseForm({ ...expenseForm, expenseDate: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                      className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Category</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Category</label>
                     <select
                       required
                       value={expenseForm.categoryId}
                       onChange={(e) => setExpenseForm({ ...expenseForm, categoryId: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                      className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                     >
                       {categories.map((category) => (
-                        <option key={category.category_id} value={category.category_id}>{category.name}</option>
+                        <option key={category.category_id} value={category.category_id} className="bg-white dark:bg-slate-900">{category.name}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Payment Mode</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Payment Mode</label>
                     <select
                       value={expenseForm.paymentMode}
                       onChange={(e) => setExpenseForm({ ...expenseForm, paymentMode: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                      className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                     >
                       {PAYMENT_MODES.map((mode) => (
-                        <option key={mode} value={mode}>{mode}</option>
+                        <option key={mode} value={mode} className="bg-white dark:bg-slate-900">{mode}</option>
                       ))}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Description</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Description</label>
                   <textarea
                     value={expenseForm.description}
                     onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
                     rows={3}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                    className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                   />
                 </div>
                 <ModalActions saving={saving} onCancel={closeModal} submitText={expenseForm.sourceType === 'OCR' && ocrWarning && !ocrConfirmed ? 'Confirm & Save Expense' : (editingId ? 'Update Expense' : 'Save Expense')} />
@@ -915,20 +922,20 @@ export const Expenses = () => {
             ) : (
               <form onSubmit={saveIncome} className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Source</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Source</label>
                   <select
                     value={incomeForm.source}
                     onChange={(e) => setIncomeForm({ ...incomeForm, source: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                    className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                   >
                     {INCOME_SOURCES.map((source) => (
-                      <option key={source} value={source}>{source}</option>
+                      <option key={source} value={source} className="bg-white dark:bg-slate-900">{source}</option>
                     ))}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Amount</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Amount</label>
                     <input
                       type="number"
                       min="0.01"
@@ -936,27 +943,27 @@ export const Expenses = () => {
                       required
                       value={incomeForm.amount}
                       onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                      className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Date</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Date</label>
                     <input
                       type="date"
                       required
                       value={incomeForm.incomeDate}
                       onChange={(e) => setIncomeForm({ ...incomeForm, incomeDate: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                      className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Description</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Description</label>
                   <textarea
                     value={incomeForm.description}
                     onChange={(e) => setIncomeForm({ ...incomeForm, description: e.target.value })}
                     rows={3}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
+                    className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                   />
                 </div>
                 <ModalActions saving={saving} onCancel={closeModal} submitText={editingId ? 'Update Income' : 'Save Income'} />
@@ -971,18 +978,18 @@ export const Expenses = () => {
 
 function ModalActions({ saving, onCancel, submitText }) {
   return (
-    <div className="flex justify-end gap-2 pt-2">
+    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
       <button
         type="button"
         onClick={onCancel}
-        className="px-4 py-2 rounded-xl text-slate-500 font-bold hover:bg-slate-100"
+        className="px-4 py-2 rounded-xl text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
       >
         Cancel
       </button>
       <button
         type="submit"
         disabled={saving}
-        className="px-4 py-2 bg-finman-blue text-white font-bold rounded-xl hover:bg-finman-blueDark shadow-md disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+        className="px-4 py-2 bg-finman-blue text-white font-bold rounded-xl hover:bg-finman-blueDark shadow-md disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer transition-colors"
       >
         {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
         {submitText}

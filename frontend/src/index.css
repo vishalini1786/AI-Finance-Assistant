@@ -69,3 +69,46 @@
   );
   animation: shimmer 3s infinite;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Dark Mode Form & Input Contrast (Module 3 Audit)
+   Ensures amounts, text, dates, selects & textareas are crisp
+   and fully readable across all user and admin panels.
+   ───────────────────────────────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="file"]),
+.dark select,
+.dark textarea {
+  color: #f8fafc;
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94a3b8;
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.dark input:disabled,
+.dark select:disabled,
+.dark textarea:disabled {
+  opacity: 0.6;
+  background-color: #0f172a;
+  cursor: not-allowed;
+}
+
+.dark option {
+  background-color: #1e293b;
+  color: #f8fafc;
+}

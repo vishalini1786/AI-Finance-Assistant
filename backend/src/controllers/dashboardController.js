@@ -3,6 +3,7 @@
 const dashboardService = require('../services/dashboardService');
 const aiChatService = require('../services/aiChatService');
 const aiInsightService = require('../services/aiInsightService');
+const geminiService = require('../services/geminiService');
 const { asyncHandler } = require('../middleware/errorMiddleware');
 const { sendSuccess, sendError } = require('../utils/response');
 
@@ -67,7 +68,8 @@ const confirmAiTransaction = asyncHandler(async (req, res) => {
 const { buildFinancialProfile } = require('../services/financialProfileService');
 
 const getInsights = asyncHandler(async (req, res) => {
-  const { pageContext, status, refresh } = req.query;
+  const pageContext = req.query.pageContext || req.query.page_context || null;
+  const { status, refresh } = req.query;
   const result = await aiInsightService.getInsights(req.userId, {
     pageContext,
     status,
@@ -116,8 +118,17 @@ const recordFeedback = asyncHandler(async (req, res) => {
 });
 
 const refreshInsights = asyncHandler(async (req, res) => {
-  const refreshRes = await aiInsightService.refreshInsightsForUser(req.userId);
-  const activeInsights = await aiInsightService.getInsights(req.userId, { status: 'ACTIVE' });
+  const pageContext =
+    req.body?.pageContext ||
+    req.body?.page_context ||
+    req.query?.pageContext ||
+    req.query?.page_context ||
+    null;
+  const refreshRes = await aiInsightService.refreshInsightsForUser(req.userId, { pageContext });
+  const activeInsights = await aiInsightService.getInsights(req.userId, {
+    pageContext,
+    status: 'ACTIVE',
+  });
   return sendSuccess(res, {
     message: 'Insights refreshed successfully',
     data: {
@@ -126,6 +137,22 @@ const refreshInsights = asyncHandler(async (req, res) => {
       insights: activeInsights.insights || [],
       profile: refreshRes.profile,
     },
+  });
+});
+
+const getAiDiagnostics = asyncHandler(async (req, res) => {
+  const diag = geminiService.getGeminiDiagnostics();
+  return sendSuccess(res, {
+    message: 'AI provider diagnostics fetched',
+    data: diag,
+  });
+});
+
+const testAiConnection = asyncHandler(async (req, res) => {
+  const result = await geminiService.testConnection();
+  return sendSuccess(res, {
+    message: result.message || 'AI provider connection tested',
+    data: result,
   });
 });
 
@@ -143,5 +170,6 @@ module.exports = {
   markInsightRead,
   recordFeedback,
   refreshInsights,
+  getAiDiagnostics,
+  testAiConnection,
 };
-

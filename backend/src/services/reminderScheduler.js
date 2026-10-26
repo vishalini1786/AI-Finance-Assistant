@@ -97,9 +97,13 @@ async function processRemindersForTime(forcedTargetTime = null, specificUserId =
         continue;
       }
 
-      // Check if user already recorded an expense today in their local date
+      // Check if user already recorded an expense today in their local date (including project expenses)
       const expRes = await db.query(
-        `SELECT 1 FROM expenses WHERE user_id = $1 AND expense_date = $2 LIMIT 1`,
+        `SELECT 1 FROM (
+           SELECT expense_date FROM expenses WHERE user_id = $1 AND expense_date = $2
+           UNION ALL
+           SELECT expense_date FROM project_expenses WHERE user_id = $1 AND expense_date = $2
+         ) any_exp LIMIT 1`,
         [user.user_id, localDate]
       );
       if (expRes.rows.length > 0) {
@@ -128,6 +132,7 @@ async function processRemindersForTime(forcedTargetTime = null, specificUserId =
         message: `Hi ${user.name || 'there'}! It's ${configuredTime} — take a moment to record today's purchases so your budget and insights stay up to date.`,
         notificationType: 'DAILY_REMINDER',
         link: '/expenses',
+        deliveryDate: localDate,
       });
 
       // 2. Deliver Email Nudge
@@ -176,9 +181,13 @@ async function triggerDailyRemindersNow(specificUserId = null) {
       const { localTime, localDate } = getUserLocalTime(user.timezone);
       const configuredTime = normalizeTime(user.expense_reminder_time);
 
-      // Check if user already recorded an expense today
+      // Check if user already recorded an expense today (including project expenses)
       const expRes = await db.query(
-        `SELECT 1 FROM expenses WHERE user_id = $1 AND expense_date = $2 LIMIT 1`,
+        `SELECT 1 FROM (
+           SELECT expense_date FROM expenses WHERE user_id = $1 AND expense_date = $2
+           UNION ALL
+           SELECT expense_date FROM project_expenses WHERE user_id = $1 AND expense_date = $2
+         ) any_exp LIMIT 1`,
         [user.user_id, localDate]
       );
       if (expRes.rows.length > 0) {
@@ -203,6 +212,7 @@ async function triggerDailyRemindersNow(specificUserId = null) {
         message: `Hi ${user.name || 'there'}! Take a moment to record today's purchases so your budget and insights stay up to date.`,
         notificationType: 'DAILY_REMINDER',
         link: '/expenses',
+        deliveryDate: localDate,
       });
 
       if (user.email) {

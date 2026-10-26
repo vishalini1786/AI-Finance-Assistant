@@ -30,4 +30,16 @@ async function findById(categoryId) {
   return result.rows[0] || null;
 }
 
-module.exports = { findAllByUser, findById, create };
+async function findByNameAndUser(name, userId) {
+  const result = await db.query(
+    `SELECT * FROM categories
+     WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
+       AND (user_id IS NULL OR user_id = $2)
+     ORDER BY user_id IS NULL DESC
+     LIMIT 1`,
+    [name, userId]
+  );
+  return result.rows[0] || null;
+}
+
+module.exports = { findAllByUser, findById, findByNameAndUser, create };

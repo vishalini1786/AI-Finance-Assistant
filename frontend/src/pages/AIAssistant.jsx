@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import dashboardService from '../services/dashboardService';
@@ -32,6 +32,7 @@ import {
   Repeat,
   CreditCard,
   FileText,
+  RotateCcw,
 } from 'lucide-react';
 
 /**
@@ -45,35 +46,37 @@ function answerFromContext(question, context) {
   const categoryData  = context.categoryExpenses || [];
   const projects      = context.summary?.projects;
 
-  /* ── 1. Greetings ──────────────────────────────────────── */
-  if (/^(hello|hi+|hey|howdy|greetings|bro|hi bro|hey bro|yo|sup|good (morning|afternoon|evening))[\s!?]*$/i.test(text) || text.includes('hi bro')) {
-    return `Hey there! I'm your FinMan financial assistant. How can I help you manage your money, check your budgets, or plan your expenses today?`;
+  /* ── 1. Specific Financial Questions (Highest Priority) ── */
+  /* Spending & expenses */
+  if (/\bspend\b|\bspent\b|\bexpens\b|\bpurchas\b|\bbought\b|\bcategory\b|\bmoney go\b|\bwhere does\b/.test(text)) {
+    const top = categoryData[0];
+    const totalExp = Number(summary.totalExpenses || currentMonth.expenses || 0);
+    const topAmt = Number(top?.total_amount || 0);
+    const topPct = totalExp > 0 ? Number(((topAmt / totalExp) * 100).toFixed(1)) : 0;
+    const topLine = top
+      ? ` Your top expense category this month is ${top.category_name} at ${formatCurrency(topAmt)} (${topPct}% of spending).`
+      : '';
+    return `Your recorded expenses this month are ${formatCurrency(totalExp)}.${topLine}`;
   }
 
-  /* ── 2. Thanks / polite close ─────────────────────────── */
-  if (/^(thanks?|thank you|cheers|great|awesome|perfect|ok|okay|got it|nice)[\s!.]*$/.test(text)) {
-    return `You're welcome! Feel free to ask anytime.`;
+  /* Income & earnings */
+  if (/\bincome\b|\bearn\b|\bsalar\b|\bpay\b|\bpaycheck\b/.test(text)) {
+    return `Your total recorded income is ${formatCurrency(summary.totalIncome || 0)}.`;
   }
 
-  /* ── 3. Help ──────────────────────────────────────────── */
-  if (/\bhelp\b|\bwhat can you\b|\bwhat do you\b/.test(text)) {
-    return `I can help you across all FinMan modules:\n• Income & Expenses: "Add my salary of ₹50,000" or "Spent ₹120 on lunch"\n• Budgets: "Create a monthly food budget of ₹6,000"\n• Projects: "Create a home construction project with target budget ₹1 crore"\n• Savings Goals: "Create a savings goal of ₹5 lakh for education by Dec 2027"\n• Investments: "Record an investment of ₹15,000 in gold"\n• Loans & Bills: "How much do I owe on my loans?" or "Show upcoming bills"\n• Financial Planning: "Can I afford a phone worth ₹25,000?"`;
-  }
-
-  /* ── 3b. Projects ─────────────────────────────────────── */
-  if (/\bproject(s)?\b|\bworkspace\b/.test(text)) {
-    const projList = Array.isArray(projects) ? projects : (context.summary?.projects || []);
-    if (projList.length > 0) {
-      const pLines = projList.map((p) => `• ${p.project_name}: Target ${formatCurrency(p.target_budget)}, Spent ${formatCurrency(p.total_spent || 0)}`);
-      return `You have ${projList.length} project workspace${projList.length > 1 ? 's' : ''}:\n${pLines.join('\n')}`;
+  /* Budgets */
+  if (/\bbudget\b|\benvelope\b/.test(text)) {
+    const b = summary.budget;
+    if (b && b.totalBudget > 0) {
+      return `Your total monthly budget is ${formatCurrency(b.totalBudget)} with ${formatCurrency(b.totalSpent || 0)} spent (${b.overallUtilization || 0}% utilized).`;
     }
-    return `You have no active project workspaces recorded yet. Ask me to create one anytime!`;
+    return `You have no active budget envelopes set yet. Ask me to create one anytime, like: "Create a food budget of ₹5,000".`;
   }
 
-  /* ── 4. Savings goals ──────────────────────────────────── */
-  if (/\bgoal(s)?\b|\bsaving(s)? goal\b|\bsave for\b/.test(text) && !/\bhow (much|can)\b/.test(text)) {
+  /* Savings goals */
+  if (/\bgoal(s)?\b|\bsaving(s)? goal\b|\bsave for\b/.test(text)) {
     if (goals.length === 0) {
-      return `You have no savings goals recorded yet. Visit the Savings & Goals page to add one.`;
+      return `You have no savings goals recorded yet. Visit the Savings & Goals page or ask me to create one.`;
     }
     const lines = goals.map(g => {
       const pct = g.progress_percent ?? 0;
@@ -86,21 +89,32 @@ function answerFromContext(question, context) {
     return `You have ${goals.length} savings goal${goals.length > 1 ? 's' : ''}:\n${lines.join('\n')}`;
   }
 
-  /* ── 5. Total spending ─────────────────────────────────── */
-  if (/\bspend\b|\bspent\b|\bexpens\b/.test(text)) {
-    const top = categoryData[0];
-    const topLine = top
-      ? ` Your top expense category this month is ${top.category_name} at ${formatCurrency(top.total_amount)}.`
-      : '';
-    return `Your recorded expenses this month are ${formatCurrency(summary.totalExpenses || currentMonth.expenses || 0)}.${topLine}`;
+  /* Projects */
+  if (/\bproject(s)?\b|\bworkspace\b/.test(text)) {
+    const projList = Array.isArray(projects) ? projects : (context.summary?.projects || []);
+    if (projList.length > 0) {
+      const pLines = projList.map((p) => `• ${p.project_name}: Target ${formatCurrency(p.target_budget)}, Spent ${formatCurrency(p.total_spent || 0)}`);
+      return `You have ${projList.length} project workspace${projList.length > 1 ? 's' : ''}:\n${pLines.join('\n')}`;
+    }
+    return `You have no active project workspaces recorded yet. Ask me to create one anytime!`;
   }
 
-  /* ── 6. Income / earnings ──────────────────────────────── */
-  if (/\bincome\b|\bearn\b|\bsalar\b|\bpay\b/.test(text)) {
-    return `Your total recorded income is ${formatCurrency(summary.totalIncome || 0)}.`;
+  /* ── 2. Greetings (Only if no specific financial intent) ── */
+  if (/^(hello|hi+|hey|howdy|greetings|bro|hi bro|hey bro|yo|sup|good (morning|afternoon|evening))[\s!?]*$/i.test(text) || text === 'hi bro' || text === 'hello') {
+    return `Hey there! I'm your FinMan financial assistant. How can I help you manage your money, check your budgets, or plan your expenses today?`;
   }
 
-  /* ── 7. Fallback ──────────────────────────────────────── */
+  /* ── 3. Thanks / polite close ─────────────────────────── */
+  if (/^(thanks?|thank you|cheers|great|awesome|perfect|ok|okay|got it|nice)[\s!.]*$/.test(text)) {
+    return `You're welcome! Feel free to ask anytime.`;
+  }
+
+  /* ── 4. Help & general questions ──────────────────────── */
+  if (/\bhelp\b|\bwhat can you\b|\bwhat do you\b/.test(text)) {
+    return `I can help you across all FinMan modules:\n• Income & Expenses: "Add my salary of ₹50,000" or "Spent ₹120 on lunch"\n• Budgets: "Create a monthly food budget of ₹6,000"\n• Projects: "Create a home construction project with target budget ₹1 crore"\n• Savings Goals: "Create a savings goal of ₹5 lakh for education by Dec 2027"\n• Investments: "Record an investment of ₹15,000 in gold"\n• Loans & Bills: "How much do I owe on my loans?" or "Show upcoming bills"\n• Financial Planning: "Can I afford a phone worth ₹25,000?"`;
+  }
+
+  /* ── 5. General Fallback ──────────────────────────────── */
   return `I can answer questions about your spending, budgets, savings goals, income, financial health score, or help you record transactions. What would you like to explore?`;
 }
 
@@ -326,23 +340,38 @@ export const AIAssistant = () => {
 
 
   const [quickPrompts, setQuickPrompts] = useState([
-    'Based on my onboarding details, what should I focus on first?',
     'Analyze my spending this month',
-    'How can I save more money based on my current income?',
-    'Am I on track to reach my savings goal?',
-    'Help me plan a realistic budget for next month',
-    'Which expenses should I review first?',
-    'What financial habits should I improve?',
-    'What changed in my financial situation this month?',
+    'Where does most of my money go?',
+    'How can I save more?',
+    'How are my savings goals progressing?',
+    'Can I afford a purchase of ₹25,000?',
+    'Check my budget',
+    'What bills are coming up?',
     'How much did I spend this month?',
-    'Where am I spending the most?',
+    'Based on my onboarding details, what should I focus on first?',
   ]);
 
-  const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
+
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    if (chatContainerRef.current) {
+      const el = chatContainerRef.current;
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior,
+      });
+    }
+  }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping, activePending]);
+    if (!chatContainerRef.current) return;
+    const el = chatContainerRef.current;
+    // Only auto-scroll if the user is already near the bottom (within 120px) to prevent pulling them down when reviewing history
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
+    if (isNearBottom) {
+      scrollToBottom('smooth');
+    }
+  }, [messages, isTyping, activePending, scrollToBottom]);
 
   const loadFinancialContext = async () => {
     try {
@@ -388,7 +417,7 @@ export const AIAssistant = () => {
             {
               id: 1,
               sender: 'ai',
-              text: `Hello ${name}! I'm your FinMan Financial Assistant, connected to your verified financial records.\n\nYou can:\n• **Add transactions naturally:** "I spent ₹50 on tea today" or "Add my salary of ₹10,000"\n• **Ask spending questions:** "How much did I spend this month?" or "Where am I spending the most?"\n• **Analyze purchases:** "Can I afford a phone worth ₹25,000?"\n• **Track commitments:** "What bills are coming up?"`,
+              text: `Hello ${name}! I'm FinMan, your AI personal finance partner.\n\nI can analyze your spending, help you plan realistic budgets, track your savings goals and loan EMIs, or record transactions naturally. What would you like to check today?`,
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             },
           ]);
@@ -597,9 +626,13 @@ export const AIAssistant = () => {
       .map((m) => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }));
 
     setMessages((prev) => [...prev, userMsg]);
+    const sentDraft = trimmed;
     setInput('');
     baseTextRef.current = '';
     setIsTyping(true);
+
+    // Smoothly scroll the dedicated chat container down without scrolling the whole page
+    setTimeout(() => scrollToBottom('smooth'), 40);
 
     try {
       const response = await dashboardService.sendChatMessage(trimmed, history, activePending);
@@ -626,17 +659,38 @@ export const AIAssistant = () => {
         await loadFinancialContext();
       }
     } catch (err) {
-      console.warn('Chat endpoint fallback:', err);
-      const fallbackReply = answerFromContext(trimmed, context || {});
-      const aiMsg = {
+      console.warn('Chat endpoint error:', err);
+      try {
+        const fallbackReply = answerFromContext(trimmed, context || {});
+        if (fallbackReply) {
+          const aiMsg = {
+            id: Date.now() + 1,
+            sender: 'ai',
+            text: fallbackReply,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+          return;
+        }
+      } catch (fbErr) {
+        console.warn('Fallback failed:', fbErr);
+      }
+
+      // Preserve the user's draft on unexpected error
+      setInput(sentDraft);
+      baseTextRef.current = sentDraft;
+      const errorMsg = {
         id: Date.now() + 1,
         sender: 'ai',
-        text: fallbackReply,
+        text: '⚠️ Unable to complete your request. The AI service may be temporarily unavailable or awaiting configuration. Your draft was preserved in the composer.',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isError: true,
+        retryDraft: sentDraft,
       };
-      setMessages((prev) => [...prev, aiMsg]);
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsTyping(false);
+      setTimeout(() => scrollToBottom('smooth'), 40);
     }
   };
 
@@ -791,7 +845,33 @@ export const AIAssistant = () => {
             </div>
 
             {/* Messages container */}
-            <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/40 dark:bg-slate-900/40">
+            <div ref={chatContainerRef} className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/40 dark:bg-slate-900/40">
+              {messages.length === 0 && (
+                <div className="py-12 flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-finman-blue flex items-center justify-center mb-3 shadow-xs">
+                    <Bot className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">
+                    How can I assist with your finances?
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+                    Ask questions about your spending, add transactions using natural speech or text, or plan your next savings milestone.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 w-full">
+                    {quickPrompts.slice(0, 3).map((prompt) => (
+                      <button
+                        key={prompt}
+                        onClick={() => handleSend(prompt)}
+                        className="text-xs text-left p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:border-finman-blue hover:text-finman-blue transition-colors flex items-center justify-between group shadow-2xs cursor-pointer"
+                      >
+                        <span className="truncate">{prompt}</span>
+                        <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-finman-blue shrink-0 ml-2" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {messages.map((message) => {
                 const isUser = message.sender === 'user';
                 return (
@@ -807,10 +887,27 @@ export const AIAssistant = () => {
                           ? 'bg-finman-blue text-white rounded-tr-none'
                           : message.isSuccessBadge
                           ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 rounded-tl-none font-semibold'
+                          : message.isError
+                          ? 'bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 rounded-tl-none font-medium'
                           : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-tl-none'
                       }`}
                     >
                       <FormattedContent text={message.text} />
+
+                      {message.isError && message.retryDraft && (
+                        <div className="mt-2.5 pt-2 border-t border-rose-200 dark:border-rose-900/50 flex items-center justify-between">
+                          <span className="text-[11px] text-rose-600 dark:text-rose-400 font-medium">Ready to retry draft</span>
+                          <button
+                            type="button"
+                            onClick={() => handleSend(message.retryDraft)}
+                            disabled={isTyping}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Retry</span>
+                          </button>
+                        </div>
+                      )}
 
                       {/* Multi-Module Action Confirmation Card */}
                       {message.pendingTransaction && activePending && message.pendingTransaction.id === activePending.id && (() => {
@@ -1227,7 +1324,6 @@ export const AIAssistant = () => {
                   </div>
                 </div>
               )}
-              <div ref={messagesEndRef} />
             </div>
 
             {/* Speech recognition error banner */}

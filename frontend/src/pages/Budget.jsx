@@ -239,7 +239,7 @@ export const Budget = () => {
           {/* Module 8A: Personalized Budget Insights */}
           <PersonalizedInsights
             pageContext="BUDGET"
-            title="AI Budgeting & Allocation Recommendations"
+            title="FinMan Budget Advisor"
             subtitle="Pace alerts, realistic envelope limits, and priority alignment based on actual spending"
             className="mb-8"
           />

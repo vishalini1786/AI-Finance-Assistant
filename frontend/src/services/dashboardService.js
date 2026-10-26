@@ -46,8 +46,8 @@ async function getInsights(params = {}) {
   return res.data.data?.insights || [];
 }
 
-async function refreshInsights() {
-  const res = await api.post('/dashboard/insights/refresh');
+async function refreshInsights(data = {}) {
+  const res = await api.post('/dashboard/insights/refresh', data);
   return res.data.data?.insights || [];
 }
 

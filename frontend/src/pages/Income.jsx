@@ -409,10 +409,10 @@ export const Income = () => {
         />
       </div>
 
-      {/* Module 8A: Personalized Income Insights */}
+      {/* FinMan Income Advisor */}
       <PersonalizedInsights
         pageContext="INCOME"
-        title="Income Analysis & Cash Flow Planning"
+        title="FinMan Income Advisor"
         subtitle="Insights on income stability, source concentration, and profile alignment"
         className="mb-8"
       />

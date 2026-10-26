@@ -22,6 +22,8 @@ router.patch('/insights/:id/dismiss', dashboardController.dismissInsight);
 router.patch('/insights/:id/read', dashboardController.markInsightRead);
 router.post('/insights/:id/feedback', dashboardController.recordFeedback);
 router.get('/financial-profile', dashboardController.getFinancialProfile);
+router.get('/ai/diagnostics', dashboardController.getAiDiagnostics);
+router.post('/ai/test-connection', dashboardController.testAiConnection);
 
 module.exports = router;
 

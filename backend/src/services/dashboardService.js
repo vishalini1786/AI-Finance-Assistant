@@ -48,6 +48,8 @@ async function getSummary(userId, queryParams = {}) {
     projects,
     goals,
     monthlyTrends,
+    allocatedSavings,
+    allocatedInvestments,
   ] = await Promise.all([
     dashboardRepository.getTotalIncome(userId, queryParams),
     dashboardRepository.getTotalExpenses(userId, queryParams),
@@ -58,12 +60,35 @@ async function getSummary(userId, queryParams = {}) {
     projectService.getProjects(userId),
     goalService.getGoals(userId),
     dashboardRepository.getMonthlyTrends(userId, queryParams),
+    dashboardRepository.getTotalAllocatedSavings(userId, queryParams),
+    dashboardRepository.getTotalAllocatedInvestments(userId, queryParams),
   ]);
 
+  // 1. Net Cash Flow: Income minus recognized expenses (including project expenses)
   const netCashFlow = totalIncome - totalExpenses;
-  const periodSavings = Math.max(netCashFlow, 0);
-  const deficit = Math.max(-netCashFlow, 0);
+  const deficit = netCashFlow < 0 ? Math.abs(netCashFlow) : 0;
   const netWorth = totalHoldings - totalLiabilities;
+
+  // 2. Real recorded cash allocations (goal contributions & new investment purchases)
+  const additionalCashAllocations = allocatedSavings + allocatedInvestments;
+  const unallocatedSurplus = netCashFlow > 0 ? Math.max(0, netCashFlow - additionalCashAllocations) : 0;
+
+  // 3. Period Savings:
+  // If net cash flow is positive:
+  // - If savings contributions exist in this period, periodSavings reflects the explicit allocated amount (capped at net cash flow).
+  // - If no explicit goal allocations were made, periodSavings reflects the retained net cash flow / surplus.
+  // If net cash flow is negative (deficit):
+  // - Display deficit accurately, NEVER convert negative cash flow into positive savings.
+  let periodSavings = 0;
+  if (netCashFlow > 0) {
+    if (allocatedSavings > 0) {
+      periodSavings = Math.min(allocatedSavings, netCashFlow);
+    } else {
+      periodSavings = netCashFlow;
+    }
+  } else {
+    periodSavings = 0;
+  }
 
   const totalBudget = Number(budgetUtil.total_budget || 0);
   const totalSpent = Number(budgetUtil.total_spent || 0);
@@ -174,6 +199,9 @@ async function getSummary(userId, queryParams = {}) {
     totalExpenses,
     netCashFlow,
     periodSavings,
+    allocatedSavings,
+    allocatedInvestments,
+    unallocatedSurplus,
     deficit,
     totalSavings: periodSavings,
     totalInvestments: totalHoldings,
