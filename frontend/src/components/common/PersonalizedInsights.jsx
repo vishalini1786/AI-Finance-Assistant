@@ -5,7 +5,24 @@
 // Multiple bullet points inside one single compact container.
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+
+const VALID_APP_ROUTES = new Set([
+  '/dashboard',
+  '/income',
+  '/expenses',
+  '/budget',
+  '/health',
+  '/ai-assistant',
+  '/calendar',
+  '/projects',
+  '/reports',
+  '/savings-goals',
+  '/investments',
+  '/liabilities',
+  '/bank-transactions',
+  '/profile',
+]);
 import {
   Sparkles,
   RefreshCw,
@@ -27,6 +44,7 @@ export const PersonalizedInsights = ({
   className = '',
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -271,17 +289,32 @@ export const PersonalizedInsights = ({
                   </span>
                   <span>{bulletText}</span>
 
-                  {/* Inline Action Link */}
-                  {insight.action_link && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(insight.action_link)}
-                      className="ml-2 inline-flex items-center gap-0.5 text-finman-blue dark:text-sky-400 font-bold hover:underline cursor-pointer"
-                    >
-                      <span>{insight.action_text || 'Open'}</span>
-                      <ChevronRight className="w-3 h-3 inline" />
-                    </button>
-                  )}
+                  {/* Inline Action Link (Filtered to only valid existing application functions and distinct from current page) */}
+                  {(() => {
+                    const rawLink = typeof insight.action_link === 'string' ? insight.action_link.trim() : '';
+                    if (!rawLink || rawLink === '#') return null;
+
+                    const currentPath = (location.pathname || '').toLowerCase().replace(/\/+$/, '');
+                    const normalizedTarget = rawLink.toLowerCase().replace(/\/+$/, '');
+
+                    // Do not show link if user is already on the target page (avoids no-op clicks)
+                    if (normalizedTarget === currentPath) return null;
+
+                    // Must be a valid supported route in FinMan
+                    const isSupported = VALID_APP_ROUTES.has(normalizedTarget) || normalizedTarget.startsWith('/projects');
+                    if (!isSupported) return null;
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => navigate(rawLink)}
+                        className="ml-2 inline-flex items-center gap-0.5 text-finman-blue dark:text-sky-400 font-bold hover:underline cursor-pointer"
+                      >
+                        <span>{insight.action_text || 'Open'}</span>
+                        <ChevronRight className="w-3 h-3 inline" />
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
 

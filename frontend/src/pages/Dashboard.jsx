@@ -28,7 +28,6 @@ import {
   PiggyBank,
   Sparkles,
   ArrowRight,
-  Award,
   TrendingUp,
   ChevronRight,
   Plus,
@@ -571,32 +570,60 @@ export const Dashboard = () => {
             <div className="space-y-6">
               <div
                 onClick={() => navigate('/ai-assistant')}
-                className="group bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 text-white p-6 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 cursor-pointer"
+                className="group bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 text-white p-6 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 cursor-pointer"
               >
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2 font-bold text-xs bg-white/20 backdrop-blur-md px-3 py-1 rounded-full">
                     <Sparkles className="w-3.5 h-3.5 text-amber-300" /> AI Financial Advisor
                   </div>
-                  <span className="text-xs text-white/80 group-hover:translate-x-1 transition-transform">-&gt;</span>
+                  <span className="text-xs text-white/80 group-hover:translate-x-1 transition-transform font-bold">Ask AI -&gt;</span>
                 </div>
-                <h4 className="text-sm font-bold mt-2">Live Context Ready</h4>
-                <p className="text-xs text-blue-100/90 leading-relaxed font-medium mt-1">
-                  {buildInsight(summary)}
-                </p>
-                <div className="mt-4 pt-3 border-t border-white/10 text-xs font-bold text-amber-300 group-hover:underline">
-                  Chat with Assistant -&gt;
-                </div>
-              </div>
 
-              <div className="bg-white border border-slate-200/90 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all flex items-center gap-4">
-                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                  <Award className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900">Data Integrity</h4>
-                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    No demo financial totals are displayed on this dashboard.
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-blue-200 block">Current Cash Position</span>
+                    <h4 className="text-base font-extrabold text-white mt-0.5">
+                      {summary.deficit > 0
+                        ? `Deficit of ${formatCurrency(summary.deficit)}`
+                        : summary.periodSavings > 0 || summary.netCashFlow > 0
+                        ? `+${formatCurrency(summary.periodSavings || summary.netCashFlow)} Net Surplus`
+                        : 'Balanced Cash Flow'}
+                    </h4>
+                  </div>
+
+                  <p className="text-xs text-blue-100/90 leading-relaxed font-medium">
+                    {buildInsight(summary)}
                   </p>
+
+                  <div className="pt-3 border-t border-white/15 grid grid-cols-2 gap-3 text-xs">
+                    <div className="bg-white/10 backdrop-blur-xs p-2.5 rounded-xl">
+                      <span className="text-[10px] text-blue-200 block font-semibold">Savings Retention</span>
+                      <span className="font-bold text-white text-xs">
+                        {summary.totalIncome > 0
+                          ? `${Math.max(0, Math.round(((summary.totalIncome - summary.totalExpenses) / summary.totalIncome) * 100))}% of income`
+                          : '0%'}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/10 backdrop-blur-xs p-2.5 rounded-xl">
+                      <span className="text-[10px] text-blue-200 block font-semibold">Budget Used</span>
+                      <span className={`font-bold text-xs ${summary.budget?.isOverBudget ? 'text-rose-300' : 'text-emerald-300'}`}>
+                        {summary.budget?.utilizationPercent || 0}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {summary.netWorth !== 0 && (
+                    <div className="bg-white/10 backdrop-blur-xs px-3 py-2 rounded-xl flex items-center justify-between text-xs">
+                      <span className="text-[10px] text-blue-200 font-semibold">Recorded Net Worth</span>
+                      <span className="font-bold text-amber-300">{formatCurrency(summary.netWorth || 0)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs font-bold text-amber-300 group-hover:text-amber-200">
+                  <span>Chat with FinMan Assistant</span>
+                  <span className="group-hover:translate-x-1 transition-transform">-&gt;</span>
                 </div>
               </div>
             </div>
