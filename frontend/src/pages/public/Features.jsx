@@ -2,20 +2,15 @@ import React, { useState } from 'react';
 import Navbar from '../../components/landing/Navbar';
 import Footer from '../../components/landing/Footer';
 import InteractiveTiltCard from '../../components/common/InteractiveTiltCard';
-import { 
-  PieChart, 
-  Activity, 
-  TrendingUp, 
-  Bot, 
-  FileText, 
-  ShieldCheck, 
-  Layers, 
-  Zap, 
-  CreditCard, 
-  Calendar,
+import {
+  Activity,
+  TrendingUp,
+  Bot,
+  FileText,
+  ShieldCheck,
+  Zap,
   X,
-  ArrowRight,
-  CheckCircle2
+  ArrowRight
 } from 'lucide-react';
 
 export const FeaturesPage = () => {

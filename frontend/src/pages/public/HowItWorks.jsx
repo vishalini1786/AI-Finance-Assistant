@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import {
+  Link } from 'react-router-dom';
 import Navbar from '../../components/landing/Navbar';
 import Footer from '../../components/landing/Footer';
 import InteractiveTiltCard from '../../components/common/InteractiveTiltCard';
 import { 
-  Link2, 
-  Cpu, 
-  PieChart, 
-  TrendingUp, 
-  ArrowRight, 
-  CheckCircle2, 
-  ShieldCheck, 
-  Zap 
+  Link2,
+  Cpu,
+  PieChart,
+  TrendingUp,
+  ArrowRight,
+  CheckCircle2,
+  Zap
 } from 'lucide-react';
 
 export const HowItWorksPage = () => {

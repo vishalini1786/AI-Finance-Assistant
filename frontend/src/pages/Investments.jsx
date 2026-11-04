@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { MainLayout } from '../components/layout/MainLayout';
+import {
+  MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 import holdingService from '../services/holdingService';
@@ -12,10 +13,7 @@ import {
   AlertCircle,
   TrendingUp,
   Edit2,
-  X,
-  Calendar,
-  Layers,
-  ArrowRight,
+  X
 } from 'lucide-react';
 
 const emptyForm = {
@@ -147,7 +145,7 @@ export const Investments = () => {
     <MainLayout>
       <PageHeader
         title="Investments & Holdings"
-        subtitle="Track asset values, cost basis, and portfolio holdings from PostgreSQL"
+        subtitle="Track asset values, cost basis, and portfolio holdings"
         rightElement={
           <button
             type="button"

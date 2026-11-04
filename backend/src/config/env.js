@@ -58,6 +58,7 @@ module.exports = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || null,
     model: process.env.GEMINI_MODEL || 'gemini-flash-lite-latest',
+    timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS) || 25000,
   },
 };
 

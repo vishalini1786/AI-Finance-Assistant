@@ -3,6 +3,7 @@
 
 const VALID_STATUSES = new Set(['ACTIVE', 'PAID_OFF', 'ARCHIVED']);
 const VALID_FREQUENCIES = new Set(['MONTHLY', 'QUARTERLY', 'BI_WEEKLY', 'WEEKLY', 'YEARLY', 'ONE_TIME']);
+const VALID_CALC_METHODS = new Set(['REDUCING_BALANCE', 'FLAT_RATE', 'ZERO_INTEREST', 'DAILY_REDUCING', 'CUSTOM']);
 
 function validateLiabilityBase(data, isUpdate = false) {
   const errors = [];
@@ -56,6 +57,19 @@ function validateLiabilityBase(data, isUpdate = false) {
     }
   }
 
+  const tenureRaw = data.tenureMonths ?? data.tenure_months;
+  if (tenureRaw !== undefined && tenureRaw !== null && tenureRaw !== '') {
+    const tenure = Number(tenureRaw);
+    if (isNaN(tenure) || tenure < 1) {
+      errors.push('Tenure must be at least 1 month');
+    }
+  }
+
+  const calcMethod = data.interestCalculationMethod ?? data.interest_calculation_method;
+  if (calcMethod && !VALID_CALC_METHODS.has(String(calcMethod).toUpperCase())) {
+    errors.push('Interest calculation method must be REDUCING_BALANCE, FLAT_RATE, ZERO_INTEREST, DAILY_REDUCING, or CUSTOM');
+  }
+
   if (data.status && !VALID_STATUSES.has(String(data.status).toUpperCase())) {
     errors.push('Status must be ACTIVE, PAID_OFF, or ARCHIVED');
   }
@@ -73,6 +87,11 @@ function validateLiabilityBase(data, isUpdate = false) {
   const startDate = data.startDate ?? data.start_date;
   if (startDate && isNaN(Date.parse(startDate))) {
     errors.push('Start date must be a valid date');
+  }
+
+  const firstPaymentDate = data.firstPaymentDate ?? data.first_payment_date;
+  if (firstPaymentDate && isNaN(Date.parse(firstPaymentDate))) {
+    errors.push('First payment date must be a valid date');
   }
 
   return errors;

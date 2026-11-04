@@ -1,0 +1,82 @@
+{
+  "project": "FinMan",
+  "version": "2.1.0",
+  "environment": {
+    "python_version": "3.14.7",
+    "scikit_learn_version": "1.9.1",
+    "numpy_version": "2.5.4",
+    "pandas_version": "3.1.0"
+  },
+  "training_date": "2026-11-04T22:02:24.070345",
+  "classifier": {
+    "model_name": "FinMan Category Classifier",
+    "algorithm": "Random Forest Classifier with Calibrated Probabilities",
+    "file": "finman_category_classifier.pkl",
+    "categories": [
+      "Food",
+      "Shopping",
+      "Medical",
+      "Education",
+      "Transportation",
+      "Entertainment",
+      "Bills",
+      "Insurance",
+      "Investments",
+      "Others"
+    ],
+    "features": [
+      "text (description + merchant)",
+      "amount",
+      "day_of_week",
+      "day_of_month",
+      "payment_mode"
+    ],
+    "metrics": {
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "test_samples": 308
+    }
+  },
+  "regressor": {
+    "model_name": "FinMan Expense Regressor",
+    "algorithm": "Random Forest Regressor with Time-Series Ensembles",
+    "file": "finman_expense_regressor.pkl",
+    "features": [
+      "expense_total",
+      "expense_count",
+      "expense_average",
+      "income_total",
+      "income_count",
+      "previous_expense_1",
+      "previous_expense_2",
+      "previous_expense_3",
+      "previous_income_1",
+      "rolling_expense_mean_3",
+      "rolling_expense_std_3",
+      "savings_current",
+      "expense_income_ratio",
+      "month_number",
+      "quarter",
+      "month_sin",
+      "month_cos"
+    ],
+    "target": "next_month_expense",
+    "metrics": {
+      "mae": 6565.94,
+      "rmse": 8503.49,
+      "r2_score": 0.8724,
+      "baseline_mae": 8633.85,
+      "baseline_r2": 0.7907,
+      "improvement_percent": 24.0,
+      "test_samples": 330
+    }
+  },
+  "anomaly_detector": {
+    "method": "Dynamic Statistical Dispersion (Z-Score + IQR Category Envelopes)",
+    "threshold_z": 2.5,
+    "iqr_factor": 1.5,
+    "status": "active"
+  }
+}

@@ -5,7 +5,9 @@
 // Multiple bullet points inside one single compact container.
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  useNavigate,
+  useLocation } from 'react-router-dom';
 
 const VALID_APP_ROUTES = new Set([
   '/dashboard',
@@ -22,17 +24,14 @@ const VALID_APP_ROUTES = new Set([
   '/liabilities',
   '/bank-transactions',
   '/profile',
-]);
+  ]);
 import {
   Sparkles,
   RefreshCw,
   ThumbsUp,
   ThumbsDown,
   X,
-  ChevronRight,
-  Check,
-  AlertCircle,
-  Lightbulb,
+  ChevronRight
 } from 'lucide-react';
 import dashboardService from '../../services/dashboardService';
 

@@ -118,6 +118,26 @@ async function archiveLiability(req, res) {
   }
 }
 
+async function calculateRepayment(req, res) {
+  try {
+    const amount = req.query.amount ?? req.body?.amount;
+    const paymentDate = req.query.paymentDate ?? req.query.payment_date ?? req.body?.paymentDate ?? req.body?.payment_date;
+    const calculation = await liabilityService.calculateRepayment(req.params.id, req.userId, {
+      amount,
+      paymentDate,
+    });
+    return sendSuccess(res, {
+      message: 'Repayment calculation computed successfully',
+      data: calculation,
+    });
+  } catch (err) {
+    return sendError(res, {
+      statusCode: err.statusCode || 500,
+      message: err.message || 'Failed to compute repayment calculation',
+    });
+  }
+}
+
 async function recordPayment(req, res) {
   try {
     const result = await liabilityService.recordPayment(req.params.id, req.userId, req.body);
@@ -142,5 +162,6 @@ module.exports = {
   updateLiability,
   deleteLiability,
   archiveLiability,
+  calculateRepayment,
   recordPayment,
 };

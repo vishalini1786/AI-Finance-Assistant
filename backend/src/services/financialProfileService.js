@@ -206,13 +206,55 @@ async function buildFinancialProfile(userId) {
     return acc + amt;
   }, 0);
 
-  // Upcoming bills in next 7 days
-  const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const upcomingBills = recurringPayments.filter((r) => {
-    if (!r.next_due_date) return false;
-    const dueDate = new Date(r.next_due_date);
-    return dueDate >= now && dueDate <= sevenDaysFromNow;
+  // Upcoming obligations for next 45 days (covers current & upcoming month, including Nov 12 and all future commitments)
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const fortyFiveDaysFromNow = new Date(todayStart.getTime() + 45 * 24 * 60 * 60 * 1000);
+
+  // 1. From recurring_payments (bills, subscriptions, reminders, user commitments)
+  const recurringObligations = recurringPayments
+    .filter((r) => {
+      if (!r.next_due_date || r.is_active === false) return false;
+      const d = new Date(r.next_due_date);
+      return d >= todayStart && d <= fortyFiveDaysFromNow;
+    })
+    .map((r) => ({
+      id: `recurring_${r.recurring_payment_id}`,
+      recurring_payment_id: r.recurring_payment_id,
+      name: r.name,
+      amount: r.amount != null ? Number(r.amount) : null,
+      dueDate: typeof r.next_due_date === 'string' ? r.next_due_date.slice(0, 10) : new Date(r.next_due_date).toISOString().slice(0, 10),
+      type: String(r.frequency || '').toUpperCase() === 'REMINDER' ? 'reminder' : (String(r.name).toLowerCase().includes('emi') ? 'emi' : 'bill'),
+      status: 'Upcoming',
+    }));
+
+  // 2. From liabilities (active loans, EMIs with due dates)
+  const liabilityObligations = liabilities
+    .filter((l) => {
+      if (!l.due_date || (l.status && l.status !== 'ACTIVE')) return false;
+      const d = new Date(l.due_date);
+      return d >= todayStart && d <= fortyFiveDaysFromNow;
+    })
+    .map((l) => ({
+      id: `liability_${l.liability_id}`,
+      name: l.name || l.liability_type || 'Loan Payment',
+      amount: l.emi_amount ? Number(l.emi_amount) : (l.remaining_amount ? Number(l.remaining_amount) : null),
+      dueDate: typeof l.due_date === 'string' ? l.due_date.slice(0, 10) : new Date(l.due_date).toISOString().slice(0, 10),
+      type: 'emi',
+      status: 'Upcoming',
+    }));
+
+  // Combine and deduplicate chronologically
+  const allObligationsMap = new Map();
+  [...recurringObligations, ...liabilityObligations].forEach((ob) => {
+    const key = `${ob.name.toLowerCase()}_${ob.dueDate}`;
+    if (!allObligationsMap.has(key)) {
+      allObligationsMap.set(key, ob);
+    }
   });
+
+  const upcomingBills = Array.from(allObligationsMap.values()).sort(
+    (a, b) => new Date(a.dueDate) - new Date(b.dueDate)
+  );
 
   // Category spending details
   const categorySpending = categorySpendingRes.rows.map((r) => {

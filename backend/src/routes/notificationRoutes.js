@@ -5,5 +5,6 @@ const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 router.use(authMiddleware);
 router.get('/', notificationController.getNotifications);
+router.put('/mark-all-read', notificationController.markAllRead);
 router.put('/:id/read', notificationController.markRead);
 module.exports = router;

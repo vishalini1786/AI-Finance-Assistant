@@ -181,7 +181,7 @@ export const SavingsGoals = () => {
     <MainLayout>
       <PageHeader
         title="Savings & Goals"
-        subtitle="Track real savings goals, record contributions, and measure progress from PostgreSQL"
+        subtitle="Track savings goals, record contributions, and measure progress"
         rightElement={
           <button
             onClick={() => {

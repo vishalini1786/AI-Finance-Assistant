@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import {
+  useNavigate,
+  useLocation,
+  Link } from 'react-router-dom';
 import OnboardingLayout from '../../components/onboarding/OnboardingLayout';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -9,10 +12,20 @@ import {
   FINANCIAL_GOALS,
   FINANCIAL_EXPERIENCES,
   AI_PREFERENCES,
-} from '../../data/onboardingOptions';
+  } from '../../data/onboardingOptions';
 import {
-  Sparkles, ArrowRight, ArrowLeft, Check, CheckCircle2,
-  Loader2, AlertCircle, IndianRupee, Languages, Bell, Clock, Coffee, ShieldCheck
+  Sparkles,
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  Loader2,
+  AlertCircle,
+  IndianRupee,
+  Languages,
+  Bell,
+  Clock,
+  Coffee
 } from 'lucide-react';
 
 // ---------------------------------------------------------------

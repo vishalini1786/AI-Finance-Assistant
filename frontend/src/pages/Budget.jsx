@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { MainLayout } from '../components/layout/MainLayout';
+import {
+  MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { SummaryCard } from '../components/common/SummaryCard';
 import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
@@ -8,8 +9,18 @@ import categoryService from '../services/categoryService';
 import { analyzeBudget } from '../utils/budgetAiEngine';
 import { formatCurrency } from '../utils/formatCurrency';
 import {
-  Plus, X, AlertTriangle, Trash2, Edit2, Loader2, AlertCircle,
-  Sliders, ChevronLeft, ChevronRight, Check, XCircle, BrainCircuit
+  Plus,
+  X,
+  AlertTriangle,
+  Trash2,
+  Edit2,
+  Loader2,
+  AlertCircle,
+  Sliders,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  BrainCircuit
 } from 'lucide-react';
 
 const MONTHS = [
@@ -34,6 +45,12 @@ export const Budget = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   
   const [aiData, setAiData] = useState({ recommendations: [], warnings: [] });
+  const [reallocModal, setReallocModal] = useState(null); // { rec, customAmount }
+  const [declinedReallocs, setDeclinedReallocs] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('finman_declined_reallocs') || '[]');
+    } catch { return []; }
+  });
 
   // Plan Form State
   const [planForm, setPlanForm] = useState({
@@ -57,7 +74,13 @@ export const Budget = () => {
       setCategories(fetchedCategories);
       
       if (fetchedPlan && fetchedPlan.planId) {
-        setAiData(analyzeBudget(fetchedPlan, fetchedCategories));
+        const analyzed = analyzeBudget(fetchedPlan, fetchedCategories);
+        setAiData(analyzed);
+        // If there is an actionable overrun reallocation that hasn't been declined, auto-open popup
+        const actionable = (analyzed.recommendations || []).find(r => r.fromId && r.toId && !declinedReallocs.includes(r.id));
+        if (actionable && !reallocModal) {
+          setReallocModal({ rec: actionable, customAmount: actionable.amount, isEditing: false });
+        }
       } else {
         setAiData({ recommendations: [], warnings: [] });
       }
@@ -157,36 +180,57 @@ export const Budget = () => {
     }
   };
 
-  const acceptReallocation = async (rec) => {
-    // 1. Find the current allocations
-    const currentAllocs = plan.allocations.map(a => ({
-      categoryId: a.category_id,
-      budgetAmount: Number(a.budget_amount),
-      priority: a.priority
-    }));
+  const acceptReallocation = async (rec, customAmount = null) => {
+    const amountToMove = customAmount !== null ? Number(customAmount) : Number(rec.amount);
+    if (!amountToMove || amountToMove <= 0) return;
 
-    // 2. Adjust amounts
-    const fromAlloc = currentAllocs.find(a => a.categoryId === rec.fromId);
-    const toAlloc = currentAllocs.find(a => a.categoryId === rec.toId);
-    
-    if (fromAlloc && toAlloc) {
-      fromAlloc.budgetAmount -= rec.amount;
-      toAlloc.budgetAmount += rec.amount;
-      
+    try {
+      setLoading(true);
+      await budgetService.reallocateBudget({
+        fromCategoryId: rec.fromId,
+        toCategoryId: rec.toId,
+        amount: amountToMove,
+        month: currentMonth,
+        year: currentYear
+      });
+      setReallocModal(null);
+      await loadData(currentMonth, currentYear);
+    } catch (err) {
+      // Fallback to monthly plan update
       try {
-        setLoading(true);
-        await budgetService.saveMonthlyPlan(currentYear, currentMonth, {
-          plannedIncome: plan.plannedIncome,
-          emergencyReserve: plan.emergencyReserve,
-          allocations: currentAllocs
-        });
-        await loadData(currentMonth, currentYear);
-      } catch (err) {
-        alert('Failed to apply reallocation');
-      } finally {
-        setLoading(false);
+        const currentAllocs = plan.allocations.map(a => ({
+          categoryId: a.category_id,
+          budgetAmount: Number(a.budget_amount),
+          priority: a.priority
+        }));
+        const fromAlloc = currentAllocs.find(a => a.categoryId === rec.fromId);
+        const toAlloc = currentAllocs.find(a => a.categoryId === rec.toId);
+        if (fromAlloc && toAlloc) {
+          fromAlloc.budgetAmount -= amountToMove;
+          toAlloc.budgetAmount += amountToMove;
+          await budgetService.saveMonthlyPlan(currentYear, currentMonth, {
+            plannedIncome: plan.plannedIncome,
+            emergencyReserve: plan.emergencyReserve,
+            allocations: currentAllocs
+          });
+          setReallocModal(null);
+          await loadData(currentMonth, currentYear);
+        }
+      } catch (fallbackErr) {
+        alert(err?.response?.data?.message || 'Failed to apply reallocation');
       }
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const declineReallocation = (recId) => {
+    const updated = [...declinedReallocs, recId];
+    setDeclinedReallocs(updated);
+    try {
+      sessionStorage.setItem('finman_declined_reallocs', JSON.stringify(updated));
+    } catch {}
+    setReallocModal(null);
   };
 
   return (
@@ -276,9 +320,14 @@ export const Budget = () => {
                             <span className="font-bold text-indigo-600">Reallocate ₹{rec.amount}</span>
                             <span className="text-slate-400">from {rec.fromName} to {rec.toName}</span>
                           </div>
-                          <div className="mt-3 flex gap-2">
-                            <button onClick={() => acceptReallocation(rec)} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 flex items-center gap-1"><Check className="w-3.5 h-3.5"/> Accept</button>
-                            <button onClick={openPlanModal} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200">Edit Plan</button>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button onClick={() => acceptReallocation(rec)} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 flex items-center gap-1 cursor-pointer"><Check className="w-3.5 h-3.5"/> Accept</button>
+                            {rec.fromId && rec.toId && (
+                              <button onClick={() => setReallocModal({ rec, customAmount: rec.amount, isEditing: true })} className="px-3 py-1.5 bg-blue-100 text-finman-blue text-xs font-bold rounded-lg hover:bg-blue-200 cursor-pointer">Modify Amount</button>
+                            )}
+                            {rec.fromId && rec.toId && (
+                              <button onClick={() => declineReallocation(rec.id)} className="px-3 py-1.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-lg hover:bg-slate-200 cursor-pointer">Decline</button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -462,6 +511,107 @@ export const Budget = () => {
           </div>
         </div>
       )}
+
+      {/* AI Budget Reallocation Popup Modal */}
+      {reallocModal && reallocModal.rec && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-slate-800 dark:to-slate-800/60">
+              <div className="flex items-center gap-2.5">
+                <BrainCircuit className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <h3 className="font-bold text-slate-800 dark:text-white text-sm">Budget Reallocation Recommendation</h3>
+              </div>
+              <button onClick={() => setReallocModal(null)} className="text-slate-400 hover:text-rose-500 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <p className="text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                {reallocModal.rec.reason}
+              </p>
+
+              {/* Overrun Category Box */}
+              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 rounded-xl space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wide text-[10px]">Exceeded Category</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-200">
+                    {reallocModal.rec.toPriority || 'HIGH'}
+                  </span>
+                </div>
+                <div className="flex justify-between font-bold text-slate-800 dark:text-slate-100 text-sm">
+                  <span>{reallocModal.rec.toName}</span>
+                  <span className="text-rose-600">Exceeded by ₹{(reallocModal.rec.toOverage || reallocModal.rec.amount).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              {/* Source Category Box */}
+              <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide text-[10px]">Suggested Lower-Priority Source</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                    {reallocModal.rec.fromPriority || 'FLEXIBLE'}
+                  </span>
+                </div>
+                <div className="flex justify-between font-bold text-slate-800 dark:text-slate-100 text-sm">
+                  <span>{reallocModal.rec.fromName}</span>
+                  <span className="text-emerald-600">Available: ₹{(reallocModal.rec.fromRemaining || reallocModal.rec.amount).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              {/* Proposed Revised Allocations */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
+                <h4 className="font-bold text-slate-700 dark:text-slate-300 uppercase text-[10px] tracking-wider">Proposed Revised Allocations</h4>
+                <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                  <span>{reallocModal.rec.toName} Revised Budget:</span>
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                    ₹{((plan.allocations.find(a => a.category_id === reallocModal.rec.toId)?.budget_amount || 0) + Number(reallocModal.customAmount || 0)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                  <span>{reallocModal.rec.fromName} Revised Budget:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    ₹{Math.max(0, (plan.allocations.find(a => a.category_id === reallocModal.rec.fromId)?.budget_amount || 0) - Number(reallocModal.customAmount || 0)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Amount Modification Input */}
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Reallocation Amount (₹)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={reallocModal.rec.fromRemaining || reallocModal.rec.amount}
+                  value={reallocModal.customAmount}
+                  onChange={(e) => setReallocModal({ ...reallocModal, customAmount: e.target.value })}
+                  className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg p-2.5 font-bold outline-none focus:border-indigo-600"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">Maximum available from {reallocModal.rec.fromName}: ₹{(reallocModal.rec.fromRemaining || reallocModal.rec.amount).toLocaleString('en-IN')}</span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => declineReallocation(reallocModal.rec.id)}
+                  className="px-4 py-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold cursor-pointer"
+                >
+                  Decline
+                </button>
+                <button
+                  type="button"
+                  onClick={() => acceptReallocation(reallocModal.rec, reallocModal.customAmount)}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Check className="w-4 h-4" /> Accept Recommendation
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </MainLayout>
   );
 };

@@ -5,7 +5,6 @@
 const db = require('../config/database');
 const aiInsightRepository = require('../repositories/aiInsightRepository');
 const { buildFinancialProfile } = require('./financialProfileService');
-const geminiService = require('./geminiService');
 
 function formatCurrency(amt) {
   return `₹${Number(amt || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -1198,42 +1197,79 @@ async function buildCalendarInsights(userId, profile) {
   const { upcomingObligations, period } = profile;
   const insights = [];
 
-  if (upcomingObligations.count > 0) {
-    const firstBill = upcomingObligations.items[0];
-    insights.push({
-      userId,
-      insightType: `CALENDAR_UPCOMING_BILL_${firstBill.recurring_payment_id}_${period}`,
-      title: `Upcoming payment: ${firstBill.name}`,
-      description: makeStructuredDescription({
-        contextData: `Due on ${new Date(firstBill.next_due_date).toLocaleDateString('en-IN')}: ${formatCurrency(firstBill.amount)}`,
-        whatsHappening: `A recurring payment of ${formatCurrency(firstBill.amount)} for ${firstBill.name} is scheduled soon.`,
-        whyItMatters: 'Keeping track of scheduled bills ensures your primary account is prepared and avoids overdraft fees.',
-        tryThis: 'Check that your account has enough balance before the payment date.',
-      }),
-      severity: 'LOW',
-      pageContext: 'CALENDAR',
-      actionLink: '/calendar',
-      actionText: 'Inspect Recurring Schedule',
-      dataGrounding: `Due date: ${new Date(firstBill.next_due_date).toLocaleDateString('en-IN')}, Amount: ${formatCurrency(firstBill.amount)}.`,
-      expectedBenefit: 'Prevents overdraft penalties or failed recurring transaction fees.',
-      isPreliminary: false,
+  if (upcomingObligations && (upcomingObligations.count > 0 || (upcomingObligations.items && upcomingObligations.items.length > 0))) {
+    // Generate individual upcoming commitment cards (up to 5) so all commitments (e.g. Nov 12) are visible
+    upcomingObligations.items.slice(0, 5).forEach((bill, idx) => {
+      const dueDateStr = bill.dueDate || bill.next_due_date;
+      const dueDateObj = new Date(dueDateStr);
+      const formattedDate = dueDateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      const amountStr = bill.amount != null ? formatCurrency(bill.amount) : 'Amount not specified';
+
+      insights.push({
+        userId,
+        insightType: `CALENDAR_UPCOMING_${bill.id || idx}_${dueDateStr}_${period}`,
+        title: `Upcoming payment: ${bill.name}`,
+        description: makeStructuredDescription({
+          contextData: `Due on ${formattedDate} (${amountStr}) • Status: ${bill.status || 'Upcoming'}`,
+          whatsHappening: bill.amount != null
+            ? `A scheduled payment of ${amountStr} for ${bill.name} is upcoming on ${formattedDate}.`
+            : `A financial commitment for ${bill.name} is upcoming on ${formattedDate}.`,
+          whyItMatters: 'Tracking scheduled commitments ensures your account is prepared and avoids missed deadlines.',
+          tryThis: bill.amount != null
+            ? `Ensure your account balance covers ${amountStr} before ${formattedDate}.`
+            : `Review calendar notes for this commitment.`,
+        }),
+        severity: idx === 0 ? 'MEDIUM' : 'LOW',
+        pageContext: 'CALENDAR',
+        actionLink: '/calendar',
+        actionText: 'View in Smart Calendar',
+        dataGrounding: `Due date: ${dueDateStr}, Amount: ${amountStr}, Type: ${bill.type || 'Commitment'}.`,
+        expectedBenefit: 'Ensures proactive planning and prevents missed commitment deadlines.',
+        isPreliminary: false,
+      });
     });
+
+    // Consolidated overview if multiple commitments exist
+    if (upcomingObligations.count > 1) {
+      const summaryLines = upcomingObligations.items.slice(0, 6).map(
+        b => `• ${b.name}: ${b.amount != null ? formatCurrency(b.amount) : 'Amount TBD'} (${new Date(b.dueDate || b.next_due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})`
+      ).join('\n');
+
+      insights.unshift({
+        userId,
+        insightType: `CALENDAR_OVERVIEW_${period}`,
+        title: `Smart Calendar: ${upcomingObligations.count} Upcoming Commitments`,
+        description: makeStructuredDescription({
+          contextData: `${upcomingObligations.count} scheduled obligations in next 45 days`,
+          whatsHappening: `You have ${upcomingObligations.count} upcoming financial commitments scheduled:\n${summaryLines}`,
+          whyItMatters: 'Reviewing all obligations together prevents cash flow bottlenecks.',
+          tryThis: 'Check your available surplus against scheduled payments on the Smart Calendar page.',
+        }),
+        severity: 'LOW',
+        pageContext: 'CALENDAR',
+        actionLink: '/calendar',
+        actionText: 'Inspect Smart Calendar',
+        dataGrounding: `Total commitments: ${upcomingObligations.count}.`,
+        expectedBenefit: 'Complete visibility across all loan, bill, and reminder schedules.',
+        isPreliminary: false,
+      });
+    }
   } else {
     insights.push({
       userId,
       insightType: `CALENDAR_NO_BILLS_${period}`,
-      title: 'No upcoming recurring payments scheduled',
+      title: 'No upcoming commitments scheduled',
       description: makeStructuredDescription({
-        contextData: '0 recurring payments due in next 30 days',
-        whatsHappening: 'No subscriptions, EMIs, or utility bills are scheduled in the next 30 days.',
+        contextData: '0 commitments due in next 45 days',
+        whatsHappening: 'No subscriptions, EMIs, or utility bills are scheduled in the next 45 days.',
         whyItMatters: 'Logging recurring commitments avoids overdrafts and unexpected fees.',
         tryThis: 'Add recurring bills to your Smart Calendar to track upcoming payment dates.',
       }),
       severity: 'LOW',
       pageContext: 'CALENDAR',
       actionLink: '/calendar',
-      actionText: 'Add Recurring Bill',
-      dataGrounding: 'User has 0 recurring_payments due in upcoming period.',
+      actionText: 'Add Commitment',
+      dataGrounding: 'User has 0 commitments due in upcoming period.',
       expectedBenefit: 'Enables automatic calendar notifications.',
       isPreliminary: false,
     });
@@ -1436,6 +1472,7 @@ async function recordFeedback(insightId, userId, feedback) {
 }
 
 module.exports = {
+  buildCalendarInsights,
   refreshInsightsForUser,
   getInsights,
   markRead,

@@ -19,14 +19,52 @@ async function markRead(notificationId, userId) {
 	return notification;
 }
 
-async function notifyBudgetStatus(userId, budget) {
-	const utilization = Number(budget.utilization_percent || 0);
-	if (utilization < 80) return null;
-	const title = `${budget.category_name} budget ${utilization >= 100 ? 'exceeded' : 'near limit'}`;
-	const message = utilization >= 100
-		? `${budget.category_name} budget exceeded by ${Math.abs(Number(budget.remaining_amount)).toFixed(2)}.`
-		: `${budget.category_name} budget is ${utilization}% utilized.`;
-	return notificationRepository.createIfMissing({ userId, title, message, notificationType: 'BUDGET' });
+async function markAllRead(userId) {
+	await notificationRepository.markAllRead(userId);
+	return { success: true };
 }
 
-module.exports = { getNotifications, markRead, notifyBudgetStatus };
+async function notifyBudgetStatus(userId, budget) {
+	const utilization = Number(budget.utilization_percent || 0);
+
+	// 80% utilization: Early warning; 100% utilization: Budget exceeded
+	if (utilization < 80) return null;
+
+	// Period validation: only alert on the CURRENT calendar month & year
+	const now = new Date();
+	const currentMonth = now.getMonth() + 1;
+	const currentYear = now.getFullYear();
+	const bMonth = Number(budget.month);
+	const bYear = Number(budget.year);
+
+	if (bMonth !== currentMonth || bYear !== currentYear) {
+		return null; // Expired past months or future months must NOT generate notifications
+	}
+
+	const budgetId = budget.budget_id;
+	const isExceeded = utilization >= 100;
+
+	const title = isExceeded
+		? `${budget.category_name} budget exceeded`
+		: `${budget.category_name} budget almost exhausted`;
+
+	const remaining = Number(budget.remaining_amount || 0);
+	const message = isExceeded
+		? `Your ${budget.category_name} budget has been exceeded by ₹${Math.abs(remaining).toFixed(0)}. Consider reviewing your spending.`
+		: `Your ${budget.category_name} budget is ${Math.round(utilization)}% utilized — only ₹${Math.max(0, remaining).toFixed(0)} remaining.`;
+
+	const notificationType = isExceeded ? 'BUDGET_EXCEEDED' : 'BUDGET_NEAR_LIMIT';
+
+	return notificationRepository.createBudgetNotificationIfMissing({
+		userId,
+		title,
+		message,
+		notificationType,
+		budgetId,
+		month: bMonth,
+		year: bYear,
+		link: '/budget',
+	});
+}
+
+module.exports = { getNotifications, markRead, markAllRead, notifyBudgetStatus };

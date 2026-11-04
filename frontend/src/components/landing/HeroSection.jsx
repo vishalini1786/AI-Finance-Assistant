@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { Sparkles, ArrowRight, Bot, ShieldCheck, Zap, TrendingUp, PieChart, Activity, Info } from 'lucide-react';
+import {
+  Link } from 'react-router-dom';
+import { Sparkles,
+  ArrowRight,
+  Bot,
+  ShieldCheck,
+  Zap,
+  TrendingUp,
+  PieChart
+} from 'lucide-react';
 import MagneticButton from '../common/MagneticButton';
 import DeviceMockup from '../common/DeviceMockup';
 

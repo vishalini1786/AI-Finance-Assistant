@@ -29,7 +29,7 @@ function formatTime12(timeStr) {
   return `${hour12}:${m.padStart(2, '0')} ${ampm}`;
 }
 
-function buildForm(user) {
+function buildForm(user, activeTheme = 'light') {
   const detectedTz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'Asia/Kolkata';
   return {
     name: user?.name || '',
@@ -37,7 +37,7 @@ function buildForm(user) {
     occupation: user?.occupation || '',
     monthlyIncome: user?.monthly_income == null ? '' : String(user.monthly_income),
     preferredLanguage: user?.preferred_language || 'en',
-    themePreference: user?.theme_preference || 'light',
+    themePreference: activeTheme || user?.theme_preference || localStorage.getItem('finman_theme') || 'light',
     expenseReminderEnabled: user?.expense_reminder_enabled !== undefined ? Boolean(user.expense_reminder_enabled) : true,
     expenseReminderTime: user?.expense_reminder_time ? user.expense_reminder_time.slice(0, 5) : '21:00',
     timezone: user?.timezone || detectedTz || 'Asia/Kolkata',
@@ -48,11 +48,16 @@ function buildForm(user) {
 export const Profile = () => {
   const { currentUser, refreshCurrentUser, updateProfile } = useAuth();
   const { theme, setThemePreference } = useTheme();
-  const [form, setForm] = useState(buildForm(currentUser));
+  const [form, setForm] = useState(() => buildForm(currentUser, theme));
   const [loading, setLoading] = useState(!currentUser);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useEffect(() => {
+    if (form.themePreference !== theme) {
+      setForm((prev) => ({ ...prev, themePreference: theme }));
+    }
+  }, [theme]);
 
   useEffect(() => {
     let isMounted = true;
@@ -62,7 +67,7 @@ export const Profile = () => {
         setLoading(true);
         const user = currentUser || await refreshCurrentUser();
         if (isMounted) {
-          setForm(buildForm(user));
+          setForm(buildForm(user, theme));
           setError('');
         }
       } catch (err) {
@@ -99,7 +104,7 @@ export const Profile = () => {
       });
       setThemePreference(form.themePreference);
       setForm(buildForm(updatedUser));
-      setSuccess('Profile saved to PostgreSQL.');
+      setSuccess('Profile updated successfully.');
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to save profile.');
     } finally {
@@ -111,7 +116,7 @@ export const Profile = () => {
     <MainLayout>
       <PageHeader
         title="Profile & Settings"
-        subtitle="Authenticated user profile stored in PostgreSQL"
+        subtitle="Your personal account and application preferences"
       />
 
       {error && (

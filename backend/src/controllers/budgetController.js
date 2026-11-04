@@ -31,4 +31,10 @@ const deleteBudget = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Budget deleted successfully', data: {} });
 });
 
-module.exports = { getAllBudgets, getBudgetById, createBudget, updateBudget, deleteBudget };
+const reallocateBudget = asyncHandler(async (req, res) => {
+  const { fromCategoryId, toCategoryId, amount, month, year } = req.body;
+  const result = await budgetService.reallocateBudget(req.userId, { fromCategoryId, toCategoryId, amount, month, year });
+  return sendSuccess(res, { message: result.message, data: result });
+});
+
+module.exports = { getAllBudgets, getBudgetById, createBudget, updateBudget, deleteBudget, reallocateBudget };

@@ -36,6 +36,11 @@ const liabilityService = {
     return response.data.data;
   },
 
+  calculateRepayment: async (id, params = {}) => {
+    const response = await api.get(`/liabilities/${id}/calculate-repayment`, { params });
+    return response.data.data;
+  },
+
   recordPayment: async (id, paymentData) => {
     const response = await api.post(`/liabilities/${id}/payments`, paymentData);
     return response.data.data;

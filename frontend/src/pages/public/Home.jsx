@@ -1,24 +1,23 @@
 import React, { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import {
+  Link } from 'react-router-dom';
 import Navbar from '../../components/landing/Navbar';
 import Footer from '../../components/landing/Footer';
 import HeroSection from '../../components/landing/HeroSection';
 import InteractiveTiltCard from '../../components/common/InteractiveTiltCard';
 import MagneticButton from '../../components/common/MagneticButton';
 import { 
-  Sparkles, 
-  ArrowRight, 
-  ShieldCheck, 
-  Zap, 
-  TrendingUp, 
-  PieChart, 
-  Lock, 
-  Unlock, 
-  Bot, 
-  CheckCircle2, 
-  Calculator, 
-  CreditCard, 
-  FileText, 
+  Sparkles,
+  ArrowRight,
+  ShieldCheck,
+  TrendingUp,
+  PieChart,
+  Lock,
+  Bot,
+  CheckCircle2,
+  Calculator,
+  CreditCard,
+  FileText,
   Activity,
   ChevronRight,
   Calendar,

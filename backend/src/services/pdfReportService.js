@@ -1,5 +1,4 @@
 const PDFDocument = require('pdfkit');
-const db = require('../config/database');
 const reportService = require('./reportService');
 const goalService = require('./goalService');
 const expenseRepository = require('../repositories/expenseRepository');

@@ -71,3 +71,10 @@ Desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+
+# ==========================================
+# Temporary Scratch & Test Scripts
+# ==========================================
+scratch/
+*.tmp

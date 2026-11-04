@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { AdminLayout } from '../../components/layout/AdminLayout';
+import {
+  AdminLayout } from '../../components/layout/AdminLayout';
 import adminService from '../../services/adminService';
-import { FileText, CheckCircle, Clock, XCircle, AlertTriangle, ShieldCheck, Zap } from 'lucide-react';
+import { FileText,
+  CheckCircle,
+  Clock,
+  XCircle,
+  AlertTriangle
+} from 'lucide-react';
 
 const STATUS_CONFIG = {
   processed: { icon: CheckCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-950/60' },

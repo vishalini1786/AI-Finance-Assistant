@@ -1,6 +1,7 @@
 const aiChatService = require('../src/services/aiChatService');
 const geminiService = require('../src/services/geminiService');
 const db = require('../src/config/database');
+const financeGuardrails = require('../src/services/financeGuardrails');
 
 const mockCategories = [
   { category_id: 1, name: 'Food' },
@@ -226,5 +227,50 @@ describe('Gemini Integration & AI Reliability (Part 4)', () => {
     if (db && db.pool && typeof db.pool.end === 'function') {
       await db.pool.end();
     }
+  });
+});
+
+describe('Finance-only chat guardrails', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('refuses unrelated questions before retrieving financial records', async () => {
+    const contextSpy = jest.spyOn(aiChatService, 'getUserFullContext');
+
+    const response = await aiChatService.processChatMessage('user-guardrail', 'Explain SQL.', [], null, 'en');
+
+    expect(response.reply).toBe("I'm FinMan, your personal finance assistant. I'm configured to help with budgeting, expenses, savings, investments, financial planning, and related financial questions. I can't provide general-purpose answers outside this scope.");
+    expect(contextSpy).not.toHaveBeenCalled();
+  });
+
+  test('returns a localized refusal for an unrelated question', async () => {
+    const response = await aiChatService.processChatMessage('user-guardrail', 'What is an operating system?', [], null, 'ta');
+
+    expect(response.reply).toBe(financeGuardrails.getFinanceOnlyRefusal('ta'));
+  });
+
+  test.each([
+    'What is an EMI?',
+    'Explain compound interest.',
+    'How do I use SQL to plan my budget?',
+    'இந்த மாதம் செலவுகள் எவ்வளவு?',
+    'मेरी बचत कैसे बढ़ेगी?',
+    'నా పెట్టుబడి విలువ ఎంత?',
+    'എന്റെ ചെലവുകൾ എത്രയാണ്?',
+    'ನನ್ನ ಬಜೆಟ್ ಎಷ್ಟು?',
+  ])('recognizes finance intent: %s', (message) => {
+    expect(financeGuardrails.hasFinancialIntent(message)).toBe(true);
+  });
+
+  test('rejects empty and excessively long chat messages without retrieving data', async () => {
+    const contextSpy = jest.spyOn(aiChatService, 'getUserFullContext');
+
+    await aiChatService.processChatMessage('user-guardrail', '  ', [], null, 'en');
+    await expect(
+      aiChatService.processChatMessage('user-guardrail', 'a'.repeat(4001), [], null, 'en')
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(contextSpy).not.toHaveBeenCalled();
   });
 });

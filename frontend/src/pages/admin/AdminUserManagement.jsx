@@ -1,19 +1,19 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { AdminLayout } from '../../components/layout/AdminLayout';
+import {
+  AdminLayout } from '../../components/layout/AdminLayout';
 import adminService from '../../services/adminService';
 import {
   Search,
   Shield,
   ShieldOff,
   Trash2,
-  UserCheck,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
   X,
   CheckSquare,
   Square,
-  MinusSquare,
+  MinusSquare
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 

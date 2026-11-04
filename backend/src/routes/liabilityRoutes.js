@@ -18,6 +18,8 @@ router.get('/:id', liabilityController.getLiability);
 router.put('/:id', validate(validateLiabilityUpdate), liabilityController.updateLiability);
 router.delete('/:id', liabilityController.deleteLiability);
 router.patch('/:id/archive', liabilityController.archiveLiability);
+router.get('/:id/calculate-repayment', liabilityController.calculateRepayment);
+router.post('/:id/calculate-repayment', liabilityController.calculateRepayment);
 router.post('/:id/payments', validate(validateRepayment), liabilityController.recordPayment);
 
 module.exports = router;

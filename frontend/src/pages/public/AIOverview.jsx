@@ -1,20 +1,10 @@
 import React, { useState } from 'react';
 import Navbar from '../../components/landing/Navbar';
 import Footer from '../../components/landing/Footer';
-import InteractiveTiltCard from '../../components/common/InteractiveTiltCard';
-import { 
-  Bot, 
-  Sparkles, 
-  Cpu, 
-  Activity, 
-  CheckCircle2, 
-  TrendingUp, 
-  Zap, 
-  ShieldCheck, 
-  FileCode2, 
-  Send,
-  Layers,
-  ArrowRight
+import {
+  Bot,
+  FileCode2,
+  Send
 } from 'lucide-react';
 
 export const AIOverviewPage = () => {

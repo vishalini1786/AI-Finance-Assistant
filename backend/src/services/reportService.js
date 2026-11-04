@@ -290,23 +290,15 @@ async function getComprehensiveReport(userId, queryParams = {}) {
     dashboardRepository.getTotalHoldings(userId, currentBounds),
     dashboardRepository.getTotalLiabilities(userId, currentBounds),
 
-    // Unified category breakdown (expenses + project_expenses)
+    // Personal category breakdown (project_expenses isolated)
     db.query(
-      `WITH combined_expenses AS (
-         SELECT COALESCE(c.name, 'Other') AS category_name, e.amount, e.expense_date
-         FROM expenses e
-         LEFT JOIN categories c ON c.category_id = e.category_id
-         WHERE e.user_id = $1 AND e.expense_date >= $2 AND e.expense_date <= $3
-         UNION ALL
-         SELECT COALESCE(pe.category, 'Project Expenses') AS category_name, pe.amount, pe.expense_date
-         FROM project_expenses pe
-         WHERE pe.user_id = $1 AND pe.expense_date >= $2 AND pe.expense_date <= $3
-       )
-       SELECT category_name,
-              COALESCE(SUM(amount), 0) AS total_amount,
+      `SELECT COALESCE(c.name, 'Other') AS category_name,
+              COALESCE(SUM(e.amount), 0) AS total_amount,
               COUNT(*)::int AS transaction_count
-       FROM combined_expenses
-       GROUP BY category_name
+       FROM expenses e
+       LEFT JOIN categories c ON c.category_id = e.category_id
+       WHERE e.user_id = $1 AND e.expense_date >= $2 AND e.expense_date <= $3
+       GROUP BY c.name
        ORDER BY total_amount DESC`,
       [userId, currentBounds.startDate, currentBounds.endDate]
     ),

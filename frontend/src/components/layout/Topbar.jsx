@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, LogOut, UserCircle, Zap, Menu } from 'lucide-react';
+import { Bell, LogOut, UserCircle, Zap, Menu, Globe } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import notificationService from '../../services/notificationService';
 import { QuickExpenseModal } from '../common/QuickExpenseModal';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const Topbar = ({ onToggleMobileMenu = () => {} }) => {
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
@@ -53,6 +55,24 @@ export const Topbar = ({ onToggleMobileMenu = () => {} }) => {
 
         {/* Right controls */}
         <div className="flex items-center gap-1.5 sm:gap-3">
+          {/* Language Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl px-2.5 py-1 border border-slate-200 dark:border-slate-700">
+            <Globe className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="bg-transparent text-slate-700 dark:text-slate-200 text-xs font-bold outline-none cursor-pointer"
+              aria-label="Select Language"
+            >
+              <option value="en">English</option>
+              <option value="ta">தமிழ்</option>
+              <option value="hi">हिन्दी</option>
+              <option value="te">తెలుగు</option>
+              <option value="ml">മലയാളം</option>
+              <option value="kn">ಕನ್ನಡ</option>
+            </select>
+          </div>
+
           {/* Quick Expense button */}
           <button
             type="button"
@@ -89,44 +109,65 @@ export const Topbar = ({ onToggleMobileMenu = () => {} }) => {
                 {notifications.length === 0 ? (
                   <p className="text-xs text-slate-400 py-6 text-center">No notifications yet.</p>
                 ) : (
-                  <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
-                    {notifications.map((notification) => (
-                      <button
-                        key={notification.notification_id}
-                        type="button"
-                        onClick={async () => {
-                          if (!notification.is_read) {
-                            await notificationService.markRead(notification.notification_id);
-                            setNotifications((items) =>
-                              items.map((item) =>
-                                item.notification_id === notification.notification_id
-                                  ? { ...item, is_read: true }
-                                  : item
-                              )
-                            );
-                            setUnreadCount((count) => Math.max(0, count - 1));
-                          }
-                          const target = notification.link || (notification.notification_type === 'DAILY_REMINDER' ? '/expenses' : null);
-                          if (target) {
-                            setOpen(false);
-                            navigate(target);
-                          }
-                        }}
-                        className={`w-full text-left p-2.5 rounded-xl transition cursor-pointer ${
-                          notification.is_read
-                            ? 'bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800'
-                            : 'bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100/70 border border-blue-200 dark:border-blue-900/60'
-                        }`}
-                      >
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                          {notification.title}
-                        </p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                          {notification.message}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+                      {notifications.map((notification) => (
+                        <button
+                          key={notification.notification_id}
+                          type="button"
+                          onClick={async () => {
+                            if (!notification.is_read) {
+                              await notificationService.markRead(notification.notification_id);
+                              setNotifications((items) =>
+                                items.map((item) =>
+                                  item.notification_id === notification.notification_id
+                                    ? { ...item, is_read: true }
+                                    : item
+                                )
+                              );
+                              setUnreadCount((count) => Math.max(0, count - 1));
+                            }
+                            const target = notification.link || (notification.notification_type === 'DAILY_REMINDER' ? '/expenses' : null);
+                            if (target) {
+                              setOpen(false);
+                              navigate(target);
+                            }
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl transition cursor-pointer ${
+                            notification.is_read
+                              ? 'bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              : 'bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100/70 border border-blue-200 dark:border-blue-900/60'
+                          }`}
+                        >
+                          <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                            {notification.title}
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                            {notification.message}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                    {unreadCount > 0 && (
+                      <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await notificationService.markAllRead();
+                              setNotifications((items) => items.map((item) => ({ ...item, is_read: true })));
+                              setUnreadCount(0);
+                            } catch (err) {
+                              console.error('Failed to mark all as read:', err);
+                            }
+                          }}
+                          className="text-xs font-bold text-finman-blue hover:text-indigo-600 transition-colors cursor-pointer py-1"
+                        >
+                          Mark all as read
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { AdminLayout } from '../../components/layout/AdminLayout';
+import {
+  AdminLayout } from '../../components/layout/AdminLayout';
 import adminService from '../../services/adminService';
 import {
   Bot,
@@ -8,10 +9,9 @@ import {
   Info,
   RefreshCw,
   AlertTriangle,
-  XCircle,
   CheckCircle2,
   KeyRound,
-  ShieldCheck,
+  ShieldCheck
 } from 'lucide-react';
 
 export const AdminAiMonitoring = () => {

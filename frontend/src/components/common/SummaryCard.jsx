@@ -1,14 +1,17 @@
 import React from 'react';
+import { useLanguage } from '../../context/LanguageContext';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
-export const SummaryCard = ({ 
-  title, 
-  amount, 
-  indicator, 
-  icon: Icon, 
-  isCount = false, 
-  type = "blue" 
+export const SummaryCard = ({
+  title,
+  amount,
+  indicator,
+  icon: Icon,
+  isCount = false,
+  type = "blue"
 }) => {
+  const { t } = useLanguage();
+  const translatedTitle = t(title) || title;
   const isPositive = indicator?.startsWith('+');
   const isNegative = indicator?.startsWith('-');
 

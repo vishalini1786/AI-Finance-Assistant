@@ -18,9 +18,13 @@ import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { SummaryCard } from '../components/common/SummaryCard';
 import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
+import { MlExpenseForecast } from '../components/dashboard/MlExpenseForecast';
+import { MlSpendingAnomalies } from '../components/dashboard/MlSpendingAnomalies';
+import { DashboardAddExpenseModal } from '../components/dashboard/DashboardAddExpenseModal';
 import dashboardService from '../services/dashboardService';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
+import { getTimeBasedGreeting } from '../utils/greeting';
 import {
   Wallet,
   ArrowDownRight,
@@ -100,6 +104,7 @@ export const Dashboard = () => {
   const [monthlyTrends, setMonthlyTrends] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -169,8 +174,18 @@ export const Dashboard = () => {
   return (
     <MainLayout>
       <PageHeader
-        title={`Good morning, ${firstName}`}
-        subtitle="Your PostgreSQL-backed financial overview"
+        title={`${getTimeBasedGreeting()}, ${firstName}`}
+        subtitle="Your unified personal financial overview"
+        rightElement={
+          <button
+            type="button"
+            onClick={() => setIsAddExpenseOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-finman-blue hover:bg-blue-600 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Expense</span>
+          </button>
+        }
       />
 
       {error && (
@@ -187,14 +202,8 @@ export const Dashboard = () => {
         </div>
       ) : (
         <>
+          {/* 2. Financial Summary Cards: Total Income, Total Expenses, Period Savings, Net Cash Flow */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 animate-in fade-in duration-500">
-            <SummaryCard
-              title="Net Cash Flow"
-              amount={summary.netCashFlow || 0}
-              indicator={summary.netCashFlow < 0 ? `-₹${summary.deficit} deficit` : 'Income minus expenses'}
-              icon={Wallet}
-              type={summary.netCashFlow < 0 ? 'expense' : 'blue'}
-            />
             <SummaryCard
               title="Total Income"
               amount={summary.totalIncome || 0}
@@ -222,16 +231,16 @@ export const Dashboard = () => {
               icon={PiggyBank}
               type={summary.deficit > 0 ? 'expense' : 'teal'}
             />
-          </div>
-
-          <div className="mb-8">
-            <PersonalizedInsights
-              pageContext="DASHBOARD"
-              title="FinMan Financial Advisor"
-              subtitle="Grounded in your onboarding profile, budget limits, and actual transaction records"
+            <SummaryCard
+              title="Net Cash Flow"
+              amount={summary.netCashFlow || 0}
+              indicator={summary.netCashFlow < 0 ? `-₹${summary.deficit} deficit` : 'Income minus expenses'}
+              icon={Wallet}
+              type={summary.netCashFlow < 0 ? 'expense' : 'blue'}
             />
           </div>
 
+          {/* 3 & 4. Financial Trend & Distribution Graphs */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             <div className="lg:col-span-2 bg-white p-7 rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-xl hover:border-blue-400/40 transition-all duration-300">
               <div className="flex justify-between items-center mb-4">
@@ -358,74 +367,22 @@ export const Dashboard = () => {
             </div>
           </div>
 
+          {/* 5. Monthly Expense Forecast */}
+          <MlExpenseForecast />
+
+          {/* 6. Spending Anomaly Review */}
+          <MlSpendingAnomalies />
+
+          {/* 7. Personalized Financial Insights */}
           <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
-                Project Workspaces
-              </h2>
-              <div className="flex gap-3">
-                <button onClick={() => navigate('/projects')} className="text-xs font-bold text-finman-blue hover:underline">
-                  View All Projects
-                </button>
-                <button onClick={() => navigate('/projects')} className="text-xs font-bold bg-finman-blue text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
-                  <Plus className="w-3.5 h-3.5" /> Create Project
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
-              <SummaryCard title="Active Projects" amount={summary.projects?.activeProjects || 0} isCount indicator="Project records" type="blue" />
-              <SummaryCard title="Project Capital" amount={summary.projects?.totalTargetBudget || 0} indicator="Total target budget" type="income" />
-              <SummaryCard title="Project Spending" amount={summary.projects?.totalSpent || 0} indicator="Project expenses only" type="expense" />
-              <SummaryCard title="Project Remaining" amount={summary.projects?.totalRemaining || 0} indicator="Target minus spent" type="teal" />
-            </div>
-
-            {projects.length === 0 ? (
-              <div className="bg-white p-8 rounded-2xl border border-slate-200/90 border-dashed text-center">
-                <p className="text-sm text-slate-500 font-medium mb-3">No project workspaces yet.</p>
-                <button onClick={() => navigate('/projects')} className="text-xs font-bold bg-slate-900 text-white px-4 py-2 rounded-lg">
-                  Create Your First Project
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {projects.map((project) => (
-                  <div
-                    key={project.project_id}
-                    onClick={() => navigate(`/projects/${project.project_id}`)}
-                    className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-sm hover:shadow-md cursor-pointer transition-all"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <h3 className="font-bold text-slate-900 text-sm truncate pr-2">{project.project_name}</h3>
-                      <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${project.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    </div>
-
-                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
-                      <span>{formatCurrency(project.total_spent)}</span>
-                      <span>/ {formatCurrency(project.target_budget)}</span>
-                    </div>
-
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 mb-1.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${project.is_over_budget ? 'bg-rose-500' : 'bg-finman-blue'}`}
-                        style={{ width: `${Math.min(project.utilization_percentage, 100)}%` }}
-                      />
-                    </div>
-
-                    <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-50">
-                      <span className={`text-[10px] font-bold ${project.is_over_budget ? 'text-rose-600' : 'text-slate-400'}`}>
-                        {project.is_over_budget ? 'Over budget' : `${project.utilization_percentage}% used`}
-                      </span>
-                      <span className="text-[10px] font-bold text-finman-blue flex items-center gap-1">
-                        View Project <ArrowRight className="w-3 h-3" />
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <PersonalizedInsights
+              pageContext="DASHBOARD"
+              title="FinMan Financial Advisor"
+              subtitle="Grounded in your onboarding profile, budget limits, and actual transaction records"
+            />
           </div>
 
+          {/* 8. Budget Progress & Financial Health */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div
               onClick={() => navigate('/budget')}
@@ -475,7 +432,7 @@ export const Dashboard = () => {
                       Financial Health Score
                       <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all text-emerald-600" />
                     </h2>
-                    <p className="text-xs text-slate-400">Rule-based score from real records</p>
+                    <p className="text-xs text-slate-400">Comprehensive score from your financial records</p>
                   </div>
                   <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
                     {healthScore == null ? 'Not enough data' : `${healthScore}/100`}
@@ -507,12 +464,13 @@ export const Dashboard = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* 9. Recent Transactions & FinMan Assistant */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             <div className="lg:col-span-2 bg-white p-7 rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-xl transition-all duration-300">
               <div className="flex justify-between items-center mb-5">
                 <div>
                   <h2 className="text-base font-bold text-slate-800">Recent Transactions</h2>
-                  <p className="text-xs text-slate-400">Latest expense records from PostgreSQL</p>
+                  <p className="text-xs text-slate-400">Latest recorded personal expenses</p>
                 </div>
                 <button
                   onClick={() => navigate('/expenses')}
@@ -628,8 +586,81 @@ export const Dashboard = () => {
               </div>
             </div>
           </div>
+
+          {/* 10. Project Workspaces & Remaining Dashboard Modules */}
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                Project Workspaces
+              </h2>
+              <div className="flex gap-3">
+                <button onClick={() => navigate('/projects')} className="text-xs font-bold text-finman-blue hover:underline">
+                  View All Projects
+                </button>
+                <button onClick={() => navigate('/projects')} className="text-xs font-bold bg-finman-blue text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> Create Project
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
+              <SummaryCard title="Active Projects" amount={summary.projects?.activeProjects || 0} isCount indicator="Project records" type="blue" />
+              <SummaryCard title="Project Capital" amount={summary.projects?.totalTargetBudget || 0} indicator="Total target budget" type="income" />
+              <SummaryCard title="Project Spending" amount={summary.projects?.totalSpent || 0} indicator="Project expenses only" type="expense" />
+              <SummaryCard title="Project Remaining" amount={summary.projects?.totalRemaining || 0} indicator="Target minus spent" type="teal" />
+            </div>
+
+            {projects.length === 0 ? (
+              <div className="bg-white p-8 rounded-2xl border border-slate-200/90 border-dashed text-center">
+                <p className="text-sm text-slate-500 font-medium mb-3">No project workspaces yet.</p>
+                <button onClick={() => navigate('/projects')} className="text-xs font-bold bg-slate-900 text-white px-4 py-2 rounded-lg">
+                  Create Your First Project
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {projects.map((project) => (
+                  <div
+                    key={project.project_id}
+                    onClick={() => navigate(`/projects/${project.project_id}`)}
+                    className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-sm hover:shadow-md cursor-pointer transition-all"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <h3 className="font-bold text-slate-900 text-sm truncate pr-2">{project.project_name}</h3>
+                      <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${project.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    </div>
+
+                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                      <span>{formatCurrency(project.total_spent)}</span>
+                      <span>/ {formatCurrency(project.target_budget)}</span>
+                    </div>
+
+                    <div className="w-full bg-slate-100 rounded-full h-1.5 mb-1.5 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${project.is_over_budget ? 'bg-rose-500' : 'bg-finman-blue'}`}
+                        style={{ width: `${Math.min(project.utilization_percentage, 100)}%` }}
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-50">
+                      <span className={`text-[10px] font-bold ${project.is_over_budget ? 'text-rose-600' : 'text-slate-400'}`}>
+                        {project.is_over_budget ? 'Over budget' : `${project.utilization_percentage}% used`}
+                      </span>
+                      <span className="text-[10px] font-bold text-finman-blue flex items-center gap-1">
+                        View Project <ArrowRight className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
+      <DashboardAddExpenseModal
+        isOpen={isAddExpenseOpen}
+        onClose={() => setIsAddExpenseOpen(false)}
+      />
     </MainLayout>
   );
 };

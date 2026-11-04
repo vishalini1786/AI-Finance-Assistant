@@ -31,8 +31,9 @@ async function getAssistantContext() {
   return res.data.data.context;
 }
 
-async function sendChatMessage(message, history = [], pendingTransaction = null) {
-  const res = await api.post('/dashboard/chat', { message, history, pendingTransaction });
+async function sendChatMessage(message, history = [], pendingTransaction = null, language = null) {
+  const lang = language || localStorage.getItem('finman_lang') || 'en';
+  const res = await api.post('/dashboard/chat', { message, history, pendingTransaction, language: lang });
   return res.data.data;
 }
 
@@ -71,6 +72,31 @@ async function getFinancialProfile() {
   return res.data.data?.profile || null;
 }
 
+async function getExpenseForecast() {
+  const res = await api.get('/dashboard/ml/forecast');
+  return res.data.data?.forecast;
+}
+
+async function dismissAnomaly(id) {
+  const res = await api.post(`/dashboard/ml/anomalies/${id}/dismiss`);
+  return res.data;
+}
+
+async function getSpendingAnomalies() {
+  const res = await api.get('/dashboard/ml/anomalies');
+  return res.data.data?.anomalies || [];
+}
+
+async function getMlModelInfo() {
+  const res = await api.get('/dashboard/ml/models');
+  return res.data.data?.modelInfo;
+}
+
+async function predictCategory(payload) {
+  const res = await api.post('/dashboard/ml/predict-category', payload);
+  return res.data.data;
+}
+
 export default {
   getSummary,
   getRecentTransactions,
@@ -85,5 +111,10 @@ export default {
   markInsightRead,
   submitInsightFeedback,
   getFinancialProfile,
+  getExpenseForecast,
+  getSpendingAnomalies,
+  dismissAnomaly,
+  getMlModelInfo,
+  predictCategory,
 };
 

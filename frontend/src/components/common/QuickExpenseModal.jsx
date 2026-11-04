@@ -1,8 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import expenseService from '../../services/expenseService';
 import categoryService from '../../services/categoryService';
-import { formatCurrency } from '../../utils/formatCurrency';
-import { X, Loader2, Zap, RotateCcw, TrendingUp, Check, Calendar } from 'lucide-react';
+import dashboardService from '../../services/dashboardService';
+import {
+  formatCurrency } from '../../utils/formatCurrency';
+import { X,
+  Loader2,
+  Zap,
+  RotateCcw,
+  TrendingUp,
+  Check
+} from 'lucide-react';
 
 const PAYMENT_MODES = ['UPI', 'Cash', 'Credit Card', 'Debit Card', 'Net Banking', 'Auto Debit', 'Other'];
 
@@ -52,8 +60,38 @@ export function QuickExpenseModal({ isOpen, onClose, onSaved }) {
   const [repeatSelected, setRepeatSelected] = useState({});
   const [activeTab, setActiveTab] = useState('quick'); // 'quick' | 'frequent' | 'yesterday'
   const [saving, setSaving] = useState(false);
+  const [aiQuickSuggestion, setAiQuickSuggestion] = useState(null);
+  const [userLockedCategory, setUserLockedCategory] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || userLockedCategory || !description || description.trim().length < 2) return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await dashboardService.predictCategory({ description: description.trim() });
+        const predictedName = res?.category || res?.prediction?.category;
+        if (predictedName && !userLockedCategory) {
+          const match = categories.find(
+            (c) => c.name.toLowerCase() === predictedName.toLowerCase()
+          );
+          if (match) {
+            setAiQuickSuggestion({
+              name: match.name,
+              categoryId: match.category_id,
+              confidence: typeof res?.confidence === 'number' ? res.confidence : res?.prediction?.confidence,
+            });
+            setSelectedCategory({
+              categoryId: match.category_id,
+              name: match.name,
+              icon: getCategoryIcon(match.name),
+            });
+          }
+        }
+      } catch (e) {}
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [description, isOpen, userLockedCategory, categories]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -96,6 +134,8 @@ export function QuickExpenseModal({ isOpen, onClose, onSaved }) {
     setExpenseDate(todayStr());
     setPaymentMode('UPI');
     setDescription('');
+    setAiQuickSuggestion(null);
+    setUserLockedCategory(false);
     setRepeatSelected({});
     setActiveTab('quick');
     setError('');
@@ -108,6 +148,7 @@ export function QuickExpenseModal({ isOpen, onClose, onSaved }) {
 
   const handleSelectCategory = (cat) => {
     if (!cat) return;
+    setUserLockedCategory(true);
     setSelectedCategory({
       categoryId: cat.category_id,
       name: cat.name,

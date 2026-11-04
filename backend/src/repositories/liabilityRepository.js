@@ -2,6 +2,7 @@
 // Handles all PostgreSQL database queries for liabilities and repayments.
 
 const db = require('../config/database');
+const { calculateRepaymentBreakdown } = require('../utils/loanCalculator');
 
 const SELECT_LIABILITY_FIELDS = `
   liability_id,
@@ -19,6 +20,9 @@ const SELECT_LIABILITY_FIELDS = `
   tenure_months,
   status,
   notes,
+  interest_calculation_method,
+  repayment_method,
+  TO_CHAR(first_payment_date, 'YYYY-MM-DD') AS first_payment_date,
   created_at,
   updated_at
 `;
@@ -104,6 +108,9 @@ async function create({
   tenureMonths = null,
   status = 'ACTIVE',
   notes = null,
+  interestCalculationMethod = 'REDUCING_BALANCE',
+  repaymentMethod = 'EMI',
+  firstPaymentDate = null,
 }) {
   const finalRemaining = remainingAmount !== undefined && remainingAmount !== null
     ? remainingAmount
@@ -113,9 +120,10 @@ async function create({
     `INSERT INTO liabilities (
        user_id, liability_type, name, total_amount, remaining_amount,
        interest_rate, due_date, lender, emi_amount, payment_frequency,
-       start_date, tenure_months, status, notes
+       start_date, tenure_months, status, notes,
+       interest_calculation_method, repayment_method, first_payment_date
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING ${SELECT_LIABILITY_FIELDS}`,
     [
       userId,
@@ -132,6 +140,9 @@ async function create({
       tenureMonths ?? null,
       status ? status.toUpperCase() : 'ACTIVE',
       notes ? notes.trim() : null,
+      interestCalculationMethod ? interestCalculationMethod.toUpperCase() : 'REDUCING_BALANCE',
+      repaymentMethod || 'EMI',
+      firstPaymentDate || null,
     ]
   );
   return result.rows[0];
@@ -166,8 +177,11 @@ async function update(liabilityId, userId, fields) {
          tenure_months = CASE WHEN $14::boolean THEN $15::int ELSE tenure_months END,
          status = $16,
          notes = CASE WHEN $17::boolean THEN $18 ELSE notes END,
+         interest_calculation_method = COALESCE($19, interest_calculation_method),
+         repayment_method = COALESCE($20, repayment_method),
+         first_payment_date = CASE WHEN $21::boolean THEN $22::date ELSE first_payment_date END,
          updated_at = NOW()
-     WHERE liability_id = $19 AND user_id = $20
+     WHERE liability_id = $23 AND user_id = $24
      RETURNING ${SELECT_LIABILITY_FIELDS}`,
     [
       fields.liabilityType ? fields.liabilityType.toUpperCase() : null,
@@ -188,6 +202,10 @@ async function update(liabilityId, userId, fields) {
       status,
       fields.notes !== undefined,
       fields.notes ? fields.notes.trim() : null,
+      fields.interestCalculationMethod ? fields.interestCalculationMethod.toUpperCase() : null,
+      fields.repaymentMethod || null,
+      fields.firstPaymentDate !== undefined,
+      fields.firstPaymentDate || null,
       liabilityId,
       userId,
     ]
@@ -218,6 +236,7 @@ async function archive(liabilityId, userId) {
 async function getPayments(liabilityId, userId) {
   const result = await db.query(
     `SELECT payment_id, liability_id, user_id, amount, principal_amount, interest_amount,
+            remaining_principal, expense_id,
             TO_CHAR(payment_date, 'YYYY-MM-DD') AS payment_date,
             payment_mode, notes, created_at
      FROM liability_payments
@@ -230,9 +249,14 @@ async function getPayments(liabilityId, userId) {
 
 /**
  * Record a payment against a liability atomically:
- * 1. Inserts into liability_payments.
- * 2. Deducts principal portion from remaining_amount.
- * 3. Updates liability status and advances due_date if applicable.
+ * 1. Locks the liability row for update.
+ * 2. Checks loan status (fully repaid loans reject payments).
+ * 3. Prevents duplicate submissions within 5 seconds.
+ * 4. Calculates exact principal/interest split via loanCalculator.
+ * 5. Records interest portion as an expense exactly once (in expenses table).
+ * 6. Inserts into liability_payments with remaining_principal and expense_id.
+ * 7. Deducts principal portion from liability remaining_amount.
+ * 8. Advances due_date on liability and active recurring commitments.
  */
 async function recordPayment({
   liabilityId,
@@ -248,9 +272,15 @@ async function recordPayment({
   try {
     await client.query('BEGIN');
 
-    // Lock liability row for update to ensure concurrency safety
+    // 1. Lock liability row for update to ensure concurrency safety
     const liabRes = await client.query(
-      `SELECT * FROM liabilities WHERE liability_id = $1 AND user_id = $2 FOR UPDATE`,
+      `SELECT *,
+              TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date,
+              TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date,
+              TO_CHAR(first_payment_date, 'YYYY-MM-DD') AS first_payment_date
+       FROM liabilities
+       WHERE liability_id = $1 AND user_id = $2
+       FOR UPDATE`,
       [liabilityId, userId]
     );
 
@@ -263,24 +293,105 @@ async function recordPayment({
     const totalPayment = Number(amount);
     const remainingBefore = Number(liab.remaining_amount);
 
-    // Calculate principal and interest parts
-    let principalPart = principalAmount !== undefined && principalAmount !== null
-      ? Number(principalAmount)
-      : Math.min(totalPayment, remainingBefore);
-    let interestPart = interestAmount !== undefined && interestAmount !== null
-      ? Number(interestAmount)
-      : Math.max(0, totalPayment - principalPart);
-
-    // If principalPart > remainingBefore, cap it
-    if (principalPart > remainingBefore) {
-      principalPart = remainingBefore;
-      interestPart = totalPayment - principalPart;
+    // Reject payment if already fully repaid
+    if (liab.status === 'PAID_OFF' || remainingBefore <= 0) {
+      const err = new Error('This loan is already fully repaid. No further payments can be recorded.');
+      err.statusCode = 400;
+      err.expose = true;
+      throw err;
     }
 
-    const newRemaining = Math.max(0, remainingBefore - principalPart);
+    const effectivePaymentDate = paymentDate || new Date().toISOString().slice(0, 10);
+
+    // Prevent duplicate repayment submissions within 5 seconds
+    const dupCheck = await client.query(
+      `SELECT payment_id FROM liability_payments
+       WHERE liability_id = $1 AND user_id = $2 AND amount = $3 AND payment_date = $4::date
+         AND created_at >= NOW() - INTERVAL '5 seconds'`,
+      [liabilityId, userId, totalPayment, effectivePaymentDate]
+    );
+    if (dupCheck.rows.length > 0) {
+      const err = new Error('Duplicate repayment detected. This payment was already recorded.');
+      err.statusCode = 409;
+      err.expose = true;
+      throw err;
+    }
+
+    // 2. Fetch latest prior payment date to compute accrued interest for the period
+    const lastPayRes = await client.query(
+      `SELECT TO_CHAR(payment_date, 'YYYY-MM-DD') AS payment_date
+       FROM liability_payments
+       WHERE liability_id = $1 AND user_id = $2
+       ORDER BY payment_date DESC, payment_id DESC
+       LIMIT 1`,
+      [liabilityId, userId]
+    );
+    const lastPaymentDate = lastPayRes.rows[0]?.payment_date || null;
+
+    // 3. Compute principal and interest split dynamically
+    const breakdown = calculateRepaymentBreakdown({
+      outstandingPrincipal: remainingBefore,
+      annualRate: Number(liab.interest_rate || 0),
+      paymentAmount: totalPayment,
+      paymentDate: effectivePaymentDate,
+      lastPaymentDate,
+      startDate: liab.start_date,
+      dueDate: liab.due_date,
+      frequency: liab.payment_frequency,
+      calculationMethod: liab.interest_calculation_method || 'REDUCING_BALANCE',
+    });
+
+    let principalPart = principalAmount !== undefined && principalAmount !== null && principalAmount !== ''
+      ? Number(principalAmount)
+      : breakdown.principalAmount;
+    let interestPart = interestAmount !== undefined && interestAmount !== null && interestAmount !== ''
+      ? Number(interestAmount)
+      : breakdown.interestAmount;
+
+    // Ensure principal part cannot exceed remaining balance
+    if (principalPart > remainingBefore) {
+      principalPart = remainingBefore;
+      interestPart = Math.max(0, Number((totalPayment - principalPart).toFixed(2)));
+    }
+
+    const calculatedRemaining = Number((remainingBefore - principalPart).toFixed(2));
+    const newRemaining = calculatedRemaining <= 0.001 ? 0 : calculatedRemaining;
     const newStatus = newRemaining === 0 ? 'PAID_OFF' : liab.status;
 
-    // Advance due date if payment schedule is active and due_date exists
+    // 4. Record interest expense exactly once in expenses table (if interestPart > 0)
+    let linkedExpenseId = null;
+    if (interestPart > 0) {
+      // Find 'Bills' category (or 'Interest')
+      const catRes = await client.query(
+        `SELECT category_id FROM categories
+         WHERE (user_id IS NULL OR user_id = $1)
+           AND LOWER(TRIM(name)) IN ('bills', 'interest', 'others')
+         ORDER BY (LOWER(TRIM(name)) = 'bills') DESC, category_id ASC
+         LIMIT 1`,
+        [userId]
+      );
+      const categoryId = catRes.rows[0]?.category_id || 7;
+
+      const expRes = await client.query(
+        `INSERT INTO expenses (
+           user_id, category_id, amount, expense_date, merchant_name, payment_mode, description, source_type
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'MANUAL')
+         RETURNING expense_id`,
+        [
+          userId,
+          categoryId,
+          interestPart,
+          effectivePaymentDate,
+          liab.lender || liab.name,
+          paymentMode || 'BANK_TRANSFER',
+          `Loan Interest - ${liab.name} (${breakdown.daysElapsed} days @ ${liab.interest_rate}%)`,
+        ]
+      );
+      linkedExpenseId = expRes.rows[0]?.expense_id || null;
+    }
+
+    // 5. Advance due date if loan remains active and due_date exists
     let newDueDate = liab.due_date;
     if (newRemaining > 0 && liab.due_date) {
       const freq = (liab.payment_frequency || 'MONTHLY').toUpperCase();
@@ -299,13 +410,15 @@ async function recordPayment({
       }
     }
 
-    // 1. Insert into liability_payments
+    // 6. Insert into liability_payments
     const payRes = await client.query(
       `INSERT INTO liability_payments (
-         liability_id, user_id, amount, principal_amount, interest_amount, payment_date, payment_mode, notes
+         liability_id, user_id, amount, principal_amount, interest_amount,
+         remaining_principal, expense_id, payment_date, payment_mode, notes
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING payment_id, liability_id, user_id, amount, principal_amount, interest_amount,
+                 remaining_principal, expense_id,
                  TO_CHAR(payment_date, 'YYYY-MM-DD') AS payment_date, payment_mode, notes, created_at`,
       [
         liabilityId,
@@ -313,13 +426,15 @@ async function recordPayment({
         totalPayment,
         principalPart,
         interestPart,
-        paymentDate || new Date().toISOString().slice(0, 10),
+        newRemaining,
+        linkedExpenseId,
+        effectivePaymentDate,
         paymentMode,
         notes ? notes.trim() : null,
       ]
     );
 
-    // 2. Update liability
+    // 7. Update liability record
     const updatedLiabRes = await client.query(
       `UPDATE liabilities
        SET remaining_amount = $1,
@@ -331,11 +446,28 @@ async function recordPayment({
       [newRemaining, newStatus, newDueDate, liabilityId, userId]
     );
 
+    // 8. If an active recurring payment exists for this loan/EMI, advance its next_due_date as well
+    if (newDueDate) {
+      await client.query(
+        `UPDATE recurring_payments
+         SET next_due_date = $1, updated_at = NOW()
+         WHERE user_id = $2 AND is_active = TRUE
+           AND (LOWER(name) LIKE $3 OR LOWER(name) LIKE $4)`,
+        [
+          newDueDate,
+          userId,
+          `%${liab.name.toLowerCase().trim()}%`,
+          `%${(liab.lender || '').toLowerCase().trim()}%`,
+        ]
+      );
+    }
+
     await client.query('COMMIT');
 
     return {
       payment: payRes.rows[0],
       liability: updatedLiabRes.rows[0],
+      calculation: breakdown,
     };
   } catch (err) {
     await client.query('ROLLBACK');

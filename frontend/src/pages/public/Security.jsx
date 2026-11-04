@@ -2,17 +2,13 @@ import React, { useState } from 'react';
 import Navbar from '../../components/landing/Navbar';
 import Footer from '../../components/landing/Footer';
 import InteractiveTiltCard from '../../components/common/InteractiveTiltCard';
-import { 
-  ShieldCheck, 
-  Lock, 
-  Unlock, 
-  Key, 
-  ShieldAlert, 
-  FileCode, 
-  CheckCircle2, 
-  Zap, 
-  Eye, 
-  EyeOff 
+import {
+  ShieldCheck,
+  Lock,
+  Key,
+  ShieldAlert,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export const SecurityPage = () => {

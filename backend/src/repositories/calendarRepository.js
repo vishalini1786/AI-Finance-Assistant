@@ -11,8 +11,21 @@ async function findEventsByUser(userId) {
      FROM financial_holdings WHERE user_id = $1 AND purchase_date IS NOT NULL
      UNION ALL
      SELECT recurring_payment_id AS source_id,
-            CASE WHEN LOWER(name) LIKE '%emi%' OR LOWER(name) LIKE '%loan%' THEN 'emi' ELSE 'bill' END AS event_type,
-            name AS title, amount, TO_CHAR(next_due_date, 'YYYY-MM-DD') AS event_date, NULL AS description, 'recurring_payments' AS source_type
+            CASE 
+              WHEN frequency = 'REMINDER' THEN 'reminder'
+              WHEN frequency = 'ONE_TIME' AND (amount = 0 OR amount IS NULL) THEN 'reminder'
+              WHEN frequency = 'ONE_TIME' THEN 'reminder'
+              WHEN LOWER(name) LIKE '%emi%' OR LOWER(name) LIKE '%loan%' THEN 'emi' 
+              WHEN LOWER(name) LIKE '%subscription%' THEN 'subscription'
+              ELSE 'bill' 
+            END AS event_type,
+            name AS title, amount, TO_CHAR(next_due_date, 'YYYY-MM-DD') AS event_date, 
+            CASE 
+              WHEN frequency = 'REMINDER' THEN 'Calendar Reminder'
+              WHEN frequency = 'ONE_TIME' THEN 'One-time Payment Reminder'
+              ELSE CONCAT('Recurring (', frequency, ')') 
+            END AS description, 
+            'recurring_payments' AS source_type
      FROM recurring_payments WHERE user_id = $1 AND is_active = TRUE AND next_due_date IS NOT NULL
      UNION ALL
      SELECT tax_id AS source_id, 'tax' AS event_type, tax_type AS title,
@@ -44,4 +57,36 @@ async function findEventsByUser(userId) {
   return result.rows;
 }
 
-module.exports = { findEventsByUser };
+async function createCalendarEvent(userId, { title, eventDate, eventType, amount, description }) {
+  // Determine frequency and reminder type
+  let freq = 'ONE_TIME';
+  const typeLower = String(eventType || '').toLowerCase();
+  if (typeLower === 'reminder' || Number(amount) === 0) {
+    freq = 'REMINDER';
+  } else if (typeLower === 'subscription' || typeLower === 'emi' || typeLower === 'recurring') {
+    freq = 'MONTHLY';
+  } else {
+    freq = 'ONE_TIME';
+  }
+
+  // Server-side duplicate prevention: check for matching active event on same date
+  const dupCheck = await db.query(
+    `SELECT * FROM recurring_payments 
+     WHERE user_id = $1 AND LOWER(TRIM(name)) = LOWER(TRIM($2)) AND next_due_date = $3::date AND is_active = TRUE
+     LIMIT 1`,
+    [userId, title.trim(), eventDate]
+  );
+  if (dupCheck.rows.length > 0) {
+    return dupCheck.rows[0];
+  }
+
+  const result = await db.query(
+    `INSERT INTO recurring_payments (user_id, name, amount, frequency, next_due_date, is_active)
+     VALUES ($1, $2, $3, $4, $5, TRUE)
+     RETURNING *`,
+    [userId, title.trim(), Number(amount) || 0, freq, eventDate]
+  );
+  return result.rows[0] || null;
+}
+
+module.exports = { findEventsByUser, createCalendarEvent };

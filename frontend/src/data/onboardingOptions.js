@@ -1,7 +1,20 @@
-import { 
-  GraduationCap, Briefcase, Rocket, Laptop, Home as HomeIcon, Layers,
-  PiggyBank, Wallet, Target, TrendingUp, ShieldCheck, HeartPulse,
-  BookOpen, Calculator, DollarSign, Clock, PieChart, Shield
+import {
+  GraduationCap,
+  Briefcase,
+  Rocket,
+  Laptop,
+  Home as HomeIcon,
+  Layers,
+  PiggyBank,
+  Wallet,
+  Target,
+  TrendingUp,
+  ShieldCheck,
+  HeartPulse,
+  BookOpen,
+  Calculator,
+  PieChart,
+  Shield
 } from 'lucide-react';
 
 export const USER_TYPES = [

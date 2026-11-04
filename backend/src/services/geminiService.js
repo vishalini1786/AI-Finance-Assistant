@@ -1,4 +1,5 @@
 const env = require('../config/env');
+const { FINANCE_ONLY_SYSTEM_INSTRUCTION } = require('./financeGuardrails');
 
 /**
  * Gemini Service — Server-side Google Gemini integration for conversational intelligence.
@@ -60,12 +61,13 @@ async function runHealthCheck(force = false) {
     return cachedHealthCheck;
   }
 
+  const probeTimeout = env.gemini?.timeoutMs || 25000;
   const start = Date.now();
   const res = await generateContent({
     prompt: 'Health check probe: reply with PONG',
     systemInstruction: '',
     temperature: 0,
-    timeoutMs: 6000,
+    timeoutMs: probeTimeout,
   });
   const latencyMs = Date.now() - start;
 
@@ -102,7 +104,7 @@ async function runHealthCheck(force = false) {
       statusLabel: 'Provider temporarily unavailable',
       healthy: false,
       latencyMs,
-      message: 'Google Gemini API request timed out after 6000ms.',
+      message: `Google Gemini API request timed out after ${probeTimeout}ms.`,
       checkedAt: new Date().toISOString(),
     };
   } else {
@@ -131,7 +133,7 @@ function getGeminiDiagnostics() {
   return {
     provider: 'Google Gemini',
     configured,
-    model: env.gemini?.model || 'gemini-1.5-flash',
+    model: env.gemini?.model || 'gemini-flash-lite-latest',
     status,
     statusLabel,
     healthy: configured ? (cachedHealthCheck.healthy !== false) : false,
@@ -161,7 +163,7 @@ async function generateContent({
   prompt,
   systemInstruction = 'You are FinMan, an expert personal finance assistant for Indian users.',
   temperature = 0.2,
-  timeoutMs = 12000,
+  timeoutMs = (env.gemini?.timeoutMs || 25000),
   responseSchema = null,
 }) {
   if (!isConfigured()) {
@@ -177,8 +179,9 @@ async function generateContent({
   const candidateModels = [
     primaryModel,
     'gemini-flash-lite-latest',
-    'gemini-3-flash-preview',
+    'gemini-3.5-flash-lite',
     'gemini-3.5-flash',
+    'gemini-3.8-flash',
   ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
   const requestBody = {
@@ -192,9 +195,14 @@ async function generateContent({
     },
   };
 
-  if (systemInstruction) {
+  const effectiveSystemInstruction = [
+    FINANCE_ONLY_SYSTEM_INSTRUCTION,
+    systemInstruction,
+  ].filter(Boolean).join('\n\n');
+
+  if (effectiveSystemInstruction) {
     requestBody.systemInstruction = {
-      parts: [{ text: systemInstruction }],
+      parts: [{ text: effectiveSystemInstruction }],
     };
   }
 
@@ -237,8 +245,8 @@ async function generateContent({
           console.warn('[Gemini] Rate limit exceeded.');
           return { success: false, status: 'RATE_LIMIT', message: 'Gemini rate limit exceeded.' };
         }
-        if (res.status === 403 || res.status === 401) {
-          console.warn('[Gemini] Authentication or quota error.');
+        if (res.status === 403 || res.status === 401 || (res.status === 400 && (errorDetail.toLowerCase().includes('api key') || errorDetail.includes('API_KEY_INVALID')))) {
+          console.warn('[Gemini] Authentication or quota error:', errorDetail);
           return { success: false, status: 'AUTH_OR_QUOTA_ERROR', message: 'Gemini quota or credentials issue.' };
         }
 
@@ -309,7 +317,7 @@ Respond ONLY with valid JSON matching this schema:
   const result = await generateContent({
     prompt,
     temperature: 0.1,
-    timeoutMs: 8000,
+    timeoutMs: env.gemini?.timeoutMs || 25000,
     responseSchema: true,
   });
 
@@ -373,24 +381,47 @@ async function extractReceiptWithGemini(fileBuffer, mimeType = 'image/jpeg', fil
     ? fileBuffer.toString('base64')
     : Buffer.from(fileBuffer).toString('base64');
 
-  const prompt = `You are a specialized financial document parser for FinMan. Analyze this receipt, invoice, bill, or salary slip image or document.
-Extract the transaction details and return ONLY a valid JSON object matching this structure:
+  const prompt = `You are an expert financial document intelligence system for FinMan.
+Analyze this uploaded document carefully. The document may be in English, Tamil (தமிழ்), Hindi (हिंदी), Telugu (తెలుగు), Malayalam (മലയാളം), or Kannada (ಕನ್ನಡ), or a mix of languages.
+
+FIRST, DETERMINE THE EXACT TYPE OF DOCUMENT:
+1. Is this a genuine financial document (receipt, retail bill, invoice, restaurant slip, utility bill, or salary slip)?
+   - If it is a personal photo, selfie, random object, landscape, university marksheet, academic certificate, homework, ID card, or non-financial document, set "is_financial_document": false.
+2. Is this a Bank Account Statement or Passbook page?
+   - If it contains multiple account transaction rows, account balance summaries, or bank statement headers (e.g. SBI, HDFC, ICICI, Axis Bank statement), set "is_bank_statement": true and "is_financial_document": false.
+
+SPECIAL CASE — FOOD DELIVERY / RESTAURANT ORDER SLIPS (Swiggy / Zomato / Restaurant KOT):
+- In many Indian restaurant slips or food delivery slips, the slip lists ordered food items and quantities (e.g., "1x Chicken Biryani, 2x Butter Naan"), but does NOT show the final billed amount (because payment was processed in the app).
+- CRITICAL: DO NOT INVENT, FABRICATE, OR ESTIMATE A TOTAL AMOUNT.
+- If there is NO final monetary total printed on the slip, set "amount": null, "missing_amount": true, and set "user_warning": "The restaurant order slip lists items and quantities, but does not specify the final billed amount. Please enter the amount manually from your Swiggy app or upload the Swiggy payment confirmation receipt."
+
+Extract and return ONLY a valid JSON object matching this schema:
 {
-  "raw_text": "A full text transcription of all text detected in the document",
-  "amount": <number or null, the total amount payable/paid or net salary>,
-  "date": "<YYYY-MM-DD string or null>",
-  "merchant": "<merchant, store, company, or employer name, string or null>",
-  "description": "<short item summary or description, string or null>",
-  "paymentMethod": "<UPI, Cash, Credit Card, Debit Card, Net Banking, Bank Account, or null>",
-  "suggestedCategory": "<One of: Food, Fuel, Medical, Shopping, Dining, Travel, Transport, Electricity, Water, Internet, Mobile, Education, Entertainment, Salary, Investment, Other>",
-  "documentType": "<RECEIPT, SALARY_SLIP, or OTHER>",
-  "transactionType": "<EXPENSE or INCOME>",
-  "confidence": <number between 0.0 and 1.0>,
-  "isLowConfidence": <true if amount is missing or confidence < 0.6, else false>,
-  "isSalarySlip": <true or false>,
-  "grossSalary": <number or null>,
-  "deductions": <number or null>,
-  "netSalary": <number or null>
+  "is_financial_document": true or false,
+  "is_bank_statement": true or false,
+  "rejection_reason": string or null,
+  "raw_text": "full transcription of text in original language",
+  "document_language": "en" | "ta" | "hi" | "te" | "ml" | "kn" | "mixed",
+  "currency": "INR",
+  "amount": number or null,
+  "missing_amount": boolean,
+  "user_warning": string or null,
+  "date": "YYYY-MM-DD" or null,
+  "merchant": string or null,
+  "description": string or null,
+  "items": [
+    { "name": string, "quantity": number, "price": number or null }
+  ],
+  "paymentMethod": "UPI" | "Cash" | "Credit Card" | "Debit Card" | "Net Banking" | null,
+  "suggestedCategory": "Food" | "Transportation" | "Medical" | "Bills" | "Shopping" | "Entertainment" | "Education" | "Insurance" | "Investments" | "Other",
+  "documentType": "RECEIPT" | "SALARY_SLIP" | "OTHER",
+  "transactionType": "EXPENSE" | "INCOME",
+  "confidence": number between 0.0 and 1.0,
+  "isLowConfidence": boolean,
+  "isSalarySlip": boolean,
+  "grossSalary": number or null,
+  "deductions": number or null,
+  "netSalary": number or null
 }
 Return only JSON without markdown formatting or code blocks.`;
 
@@ -418,12 +449,14 @@ Return only JSON without markdown formatting or code blocks.`;
   const candidateModels = [
     env.gemini.model || 'gemini-flash-lite-latest',
     'gemini-flash-lite-latest',
-    'gemini-3-flash-preview',
+    'gemini-3.5-flash-lite',
     'gemini-3.5-flash',
+    'gemini-3.8-flash',
   ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
+  const ocrTimeout = Math.max(35000, (env.gemini?.timeoutMs || 25000) + 10000);
+  const timer = setTimeout(() => controller.abort(), ocrTimeout);
 
   try {
     for (const model of candidateModels) {
@@ -456,20 +489,41 @@ Return only JSON without markdown formatting or code blocks.`;
         }
 
         if (parsed) {
+          const isFinancialDoc = parsed.is_financial_document !== false;
+          const isBankStatement = Boolean(parsed.is_bank_statement);
+          const isMissingAmount = Boolean(parsed.missing_amount || (parsed.amount === null && parsed.items?.length > 0));
+          const numAmount = parsed.amount != null ? Number(parsed.amount) : null;
+
+          let desc = parsed.description || '';
+          if (!desc && Array.isArray(parsed.items) && parsed.items.length > 0) {
+            desc = parsed.items.map(it => `${it.name || 'Item'}${it.quantity ? ` x${it.quantity}` : ''}`).join(', ');
+          }
+
           return {
             success: true,
             status: 'COMPLETED',
+            is_financial_document: isFinancialDoc,
+            is_bank_statement: isBankStatement,
+            missing_amount: isMissingAmount,
+            user_warning: parsed.user_warning || (
+              isMissingAmount
+                ? 'The restaurant order slip lists items and quantities, but does not specify the final billed amount. Please enter the amount manually from your Swiggy app or upload the Swiggy payment confirmation receipt.'
+                : null
+            ),
             raw_text: parsed.raw_text || '',
-            amount: typeof parsed.amount === 'number' ? parsed.amount : (parseFloat(parsed.amount) || null),
+            amount: isNaN(numAmount) ? null : numAmount,
             date: parsed.date || null,
             merchant: parsed.merchant || null,
-            description: parsed.description || '',
+            description: desc,
+            items: Array.isArray(parsed.items) ? parsed.items : [],
             paymentMethod: parsed.paymentMethod || null,
             suggestedCategory: parsed.suggestedCategory || 'Other',
             confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
-            isLowConfidence: Boolean(parsed.isLowConfidence),
+            isLowConfidence: Boolean(parsed.isLowConfidence || isMissingAmount),
             documentType: parsed.documentType || 'RECEIPT',
             transactionType: parsed.transactionType || 'EXPENSE',
+            currency: parsed.currency || 'INR',
+            document_language: parsed.document_language || 'en',
             isSalarySlip: Boolean(parsed.isSalarySlip),
             grossSalary: parsed.grossSalary || null,
             deductions: parsed.deductions || null,

@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { MainLayout } from '../components/layout/MainLayout';
+import {
+  MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Sparkles, 
-  Filter, 
-  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  Filter,
   Clock,
   ArrowUpRight,
   ArrowDownRight,
@@ -28,7 +28,7 @@ const YEARS = Array.from({ length: 11 }, (_, index) => new Date().getFullYear() 
 // are temporary until a recurring-payments/calendar API is connected.
 const EVENT_COLORS = {
   income: 'bg-emerald-500', bill: 'bg-rose-500', emi: 'bg-blue-600',
-  investment: 'bg-purple-600', subscription: 'bg-amber-500', savings: 'bg-teal-600', tax: 'bg-orange-600',
+  investment: 'bg-purple-600', subscription: 'bg-amber-500', savings: 'bg-teal-600', tax: 'bg-orange-600', reminder: 'bg-sky-500',
 };
 
 export const SmartCalendar = () => {
@@ -146,7 +146,7 @@ export const SmartCalendar = () => {
     .reduce((acc, curr) => acc + curr.amount, 0);
 
   const totalOutflow = currentMonthEventsList
-    .filter(e => e.type !== 'income')
+    .filter(e => e.type !== 'income' && e.type !== 'reminder')
     .reduce((acc, curr) => acc + curr.amount, 0);
 
   // Calculate preselected date string (YYYY-MM-DD)

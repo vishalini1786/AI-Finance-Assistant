@@ -46,13 +46,73 @@ async function previewStatement(userId, fileBuffer, filename, customMapping = nu
   let totalDebits = 0;
   let totalCredits = 0;
 
+  const env = require('../config/env');
+  const userCategories = await categoryRepository.findAllByUser(userId);
+
   for (let idx = 0; idx < dataRows.length; idx++) {
     const rawRow = dataRows[idx];
     const normalized = bankStatementParser.normalizeRow(rawRow, effectiveMapping, idx);
 
     if (normalized.isValid) {
       validRowsCount++;
-      if (normalized.direction === 'DEBIT') totalDebits += normalized.amount;
+      if (normalized.direction === 'DEBIT') {
+        totalDebits += normalized.amount;
+
+        // ML Category Classification
+        let mlPrediction = null;
+        try {
+          if (env.aiServiceUrl) {
+            const resp = await fetch(`${env.aiServiceUrl}/predict/category`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                description: normalized.description,
+                merchant: normalized.description,
+                amount: normalized.amount,
+                payment_mode: 'UPI',
+                day_of_week: new Date(normalized.transactionDate).getDay() || 0,
+                day_of_month: new Date(normalized.transactionDate).getDate() || 1,
+              }),
+              signal: AbortSignal.timeout(2500),
+            });
+            if (resp.ok) {
+              mlPrediction = await resp.json();
+            }
+          }
+        } catch (err) {}
+
+        if (!mlPrediction || mlPrediction.fallback) {
+          const lower = (normalized.description || '').toLowerCase();
+          let matchedName = 'Others';
+          if (/swiggy|zomato|restaurant|food|hotel|cafe|biryani|tea|snack/i.test(lower)) matchedName = 'Food';
+          else if (/petrol|diesel|fuel|uber|ola|metro|fastag|transport|auto/i.test(lower)) matchedName = 'Transportation';
+          else if (/pharmacy|medical|apollo|hospital|doctor|medicine|clinic/i.test(lower)) matchedName = 'Medical';
+          else if (/airtel|jio|electricity|water|broadband|bescom|tneb|gas|cylinder/i.test(lower)) matchedName = 'Bills';
+          else if (/amazon|flipkart|myntra|zara|shopping|mart|store/i.test(lower)) matchedName = 'Shopping';
+          else if (/netflix|movie|cinema|pvr|spotify|prime|hotstar/i.test(lower)) matchedName = 'Entertainment';
+          else if (/course|udemy|coursera|college|school|tuition/i.test(lower)) matchedName = 'Education';
+          else if (/lic|insurance|hdfc ergo|star health/i.test(lower)) matchedName = 'Insurance';
+          else if (/zerodha|groww|sip|mutual fund|nps|stock/i.test(lower)) matchedName = 'Investments';
+
+          mlPrediction = {
+            category: matchedName,
+            confidence: 0.65,
+            fallback: true,
+            alternatives: [],
+            model_version: '2.1.0-heuristic'
+          };
+        }
+
+        const matchedCategory = userCategories.find(c => c.name.toLowerCase() === mlPrediction.category.toLowerCase()) ||
+          userCategories.find(c => c.name.toLowerCase() === 'others') || userCategories[0];
+
+        normalized.predictedCategory = mlPrediction.category;
+        normalized.confidence = mlPrediction.confidence || 0.65;
+        normalized.isFallback = mlPrediction.fallback || false;
+        normalized.alternatives = mlPrediction.alternatives || [];
+        normalized.categoryId = matchedCategory ? matchedCategory.category_id : null;
+        normalized.categoryName = matchedCategory ? matchedCategory.name : mlPrediction.category;
+      }
       if (normalized.direction === 'CREDIT') totalCredits += normalized.amount;
 
       // Duplicate check against existing bank imports
@@ -127,6 +187,19 @@ async function commitImport(userId, { filename, fileFormat = 'CSV', transactions
     }
 
     if (!item.transactionDate || !item.amount || !item.direction || !item.description) {
+      skippedCount++;
+      continue;
+    }
+
+    // Server-side duplicate prevention: check against existing imported bank transactions
+    const dupCheck = await bankTransactionRepository.findExistingByReferenceOrSignature(userId, {
+      referenceNo: item.referenceNo,
+      transactionDate: item.transactionDate,
+      amount: Number(item.amount),
+      description: item.description,
+    });
+
+    if (dupCheck) {
       skippedCount++;
       continue;
     }
@@ -234,6 +307,27 @@ async function postTransactionToLedger(bankTxId, userId, { categoryId, descripti
   const txDesc = description || bankTx.description;
 
   if (bankTx.direction === 'DEBIT') {
+    // Check if an identical expense already exists in ledger to prevent duplication
+    const possibleMatches = await bankTransactionRepository.findPossibleFinmanMatches(userId, {
+      transactionDate: txDate,
+      amount: txAmount,
+      direction: 'DEBIT',
+      description: txDesc,
+    });
+    const exactMatch = possibleMatches.find(m => m.matchType === 'EXACT');
+    if (exactMatch && exactMatch.id) {
+      await bankTransactionRepository.postToLedger(bankTxId, userId, {
+        linkedExpenseId: exactMatch.id,
+        categoryId: exactMatch.categoryId || categoryId || bankTx.category_id,
+      });
+      return {
+        success: true,
+        message: 'Transaction matched and linked to existing expense in FinMan ledger (no duplicate created)',
+        type: 'EXPENSE',
+        record: exactMatch,
+      };
+    }
+
     // Must resolve a categoryId for expenses
     let finalCategoryId = categoryId || bankTx.category_id;
     if (!finalCategoryId) {
@@ -270,6 +364,26 @@ async function postTransactionToLedger(bankTxId, userId, { categoryId, descripti
       record: createdExpense,
     };
   } else if (bankTx.direction === 'CREDIT') {
+    // Check if an identical income already exists in ledger to prevent duplication
+    const possibleMatches = await bankTransactionRepository.findPossibleFinmanMatches(userId, {
+      transactionDate: txDate,
+      amount: txAmount,
+      direction: 'CREDIT',
+      description: txDesc,
+    });
+    const exactMatch = possibleMatches.find(m => m.matchType === 'EXACT');
+    if (exactMatch && exactMatch.id) {
+      await bankTransactionRepository.postToLedger(bankTxId, userId, {
+        linkedIncomeId: exactMatch.id,
+      });
+      return {
+        success: true,
+        message: 'Transaction matched and linked to existing income in FinMan ledger (no duplicate created)',
+        type: 'INCOME',
+        record: exactMatch,
+      };
+    }
+
     const validSources = new Set(['Salary', 'Freelance', 'Business', 'Scholarship', 'Rental', 'Other']);
     let finalSource = 'Other';
     if (source && validSources.has(source)) {

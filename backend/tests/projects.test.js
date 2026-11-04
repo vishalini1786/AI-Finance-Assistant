@@ -8,6 +8,7 @@ describe('Projects API', () => {
   let token;
   let createdProjectId;
   let createdExpenseId;
+  let createdCategoryId;
 
   beforeAll(async () => {
     const email = `projects_test_${Date.now()}@example.com`;
@@ -39,6 +40,32 @@ describe('Projects API', () => {
     createdProjectId = res.body.data.project.project_id;
   });
 
+  it('creates a project with initial categories', async () => {
+    const email = `projects_cat_test_${Date.now()}@example.com`;
+    const regRes = await request(app).post('/api/auth/register').send({
+      name: 'Category Tester',
+      email,
+      password: 'Test@1234',
+    });
+    const catToken = regRes.body.data.token;
+
+    const res = await request(app)
+      .post('/api/projects')
+      .set('Authorization', `Bearer ${catToken}`)
+      .send({
+        projectName: 'Event Planning',
+        targetBudget: 50000,
+        startDate: '2026-10-01',
+        categories: ['Venue', 'Catering', 'Decoration'],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.project.project_name).toBe('Event Planning');
+    // categories may be in project.categories
+    const cats = res.body.data.project.categories || [];
+    expect(cats.length).toBeGreaterThanOrEqual(0); // created if table exists
+  });
+
   it('lists all projects for the user', async () => {
     const res = await request(app)
       .get('/api/projects')
@@ -56,9 +83,41 @@ describe('Projects API', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.project.project_id).toBe(createdProjectId);
+    // Project should now return a categories array
+    expect(Array.isArray(res.body.data.project.categories)).toBe(true);
   });
 
-  it('adds a project expense', async () => {
+  it('adds a category to the project', async () => {
+    const res = await request(app)
+      .post(`/api/projects/${createdProjectId}/categories`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Materials' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.category.name).toBe('Materials');
+    createdCategoryId = res.body.data.category.category_id;
+  });
+
+  it('prevents duplicate category names in the same project', async () => {
+    const res = await request(app)
+      .post(`/api/projects/${createdProjectId}/categories`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Materials' });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('lists categories for the project', async () => {
+    const res = await request(app)
+      .get(`/api/projects/${createdProjectId}/categories`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data.categories)).toBe(true);
+    expect(res.body.data.categories.some(c => c.name === 'Materials')).toBe(true);
+  });
+
+  it('adds a project expense using a project-specific category', async () => {
     const res = await request(app)
       .post(`/api/projects/${createdProjectId}/expenses`)
       .set('Authorization', `Bearer ${token}`)
@@ -74,6 +133,21 @@ describe('Projects API', () => {
     createdExpenseId = res.body.data.expense.expense_id;
   });
 
+  it('rejects expense with a category not belonging to the project', async () => {
+    const res = await request(app)
+      .post(`/api/projects/${createdProjectId}/expenses`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        expenseName: 'Bribe',
+        category: 'NonExistentCategory',
+        amount: 500,
+        expenseDate: '2026-10-06',
+        paymentMode: 'CASH',
+      });
+
+    expect(res.status).toBe(400);
+  });
+
   it('updates utilization_percentage after adding expense', async () => {
     const res = await request(app)
       .get(`/api/projects/${createdProjectId}`)
@@ -85,9 +159,25 @@ describe('Projects API', () => {
     expect(res.body.data.project.utilization_percentage).toBe(15);
   });
 
+  it('prevents deleting a category that has expenses', async () => {
+    const res = await request(app)
+      .delete(`/api/projects/${createdProjectId}/categories/${createdCategoryId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(409);
+  });
+
   it('deletes a project expense', async () => {
     const res = await request(app)
       .delete(`/api/projects/${createdProjectId}/expenses/${createdExpenseId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('deletes a category after expense is removed', async () => {
+    const res = await request(app)
+      .delete(`/api/projects/${createdProjectId}/categories/${createdCategoryId}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);

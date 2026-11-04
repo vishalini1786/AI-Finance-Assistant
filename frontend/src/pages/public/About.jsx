@@ -2,19 +2,13 @@ import React, { useState } from 'react';
 import Navbar from '../../components/landing/Navbar';
 import Footer from '../../components/landing/Footer';
 import InteractiveTiltCard from '../../components/common/InteractiveTiltCard';
-import { 
-  Users, 
-  Briefcase, 
-  GraduationCap, 
-  Laptop, 
-  Rocket, 
-  Home, 
-  CheckCircle2, 
-  Sparkles, 
-  Target, 
-  Milestone, 
-  ArrowRight, 
-  Bot 
+import {
+  Briefcase,
+  GraduationCap,
+  Laptop,
+  Rocket,
+  Home,
+  Milestone
 } from 'lucide-react';
 
 export const AboutPage = () => {

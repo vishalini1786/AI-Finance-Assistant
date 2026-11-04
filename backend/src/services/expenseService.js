@@ -50,6 +50,17 @@ async function createExpense(userId, payload) {
   }
 
   const created = await expenseRepository.create({ userId, ...payload });
+
+  if (payload.documentTransactionId) {
+    await db.query(
+      `UPDATE financial_documents fd
+       SET processing_status = 'CONFIRMED'
+       FROM document_transactions dt
+       WHERE dt.document_transaction_id = 
+  const aiInsightService AND fd.document_id = dt.document_id AND fd.user_id = $2`,
+      [payload.documentTransactionId, userId]
+    ).catch(() => null);
+  }
   const aiInsightService = require('./aiInsightService');
   aiInsightService.refreshInsightsForUser(userId, { pageContext: ['EXPENSES', 'BUDGET', 'REPORTS', 'FINANCIAL_HEALTH', 'DASHBOARD'] }).catch(() => null);
   return created;

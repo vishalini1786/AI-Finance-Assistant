@@ -1,20 +1,16 @@
 import React, { useState } from 'react';
-import { 
-  Sparkles, 
-  TrendingUp, 
-  ShieldCheck, 
-  Zap, 
-  CreditCard, 
-  PieChart, 
-  Bell, 
-  ArrowUpRight, 
-  CheckCircle2, 
-  Smartphone, 
+import {
+  Sparkles,
+  TrendingUp,
+  ShieldCheck,
+  Zap,
+  CreditCard,
+  PieChart,
+  Bell,
+  ArrowUpRight,
+  Smartphone,
   Monitor,
-  Activity,
-  Layers,
-  ChevronRight,
-  Info
+  Activity
 } from 'lucide-react';
 
 export const DeviceMockup = ({ 

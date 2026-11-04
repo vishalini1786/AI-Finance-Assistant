@@ -17,12 +17,44 @@ export const ThemeProvider = ({ children }) => {
     localStorage.setItem('finman_theme', theme);
   }, [theme]);
 
+  // Sync across tabs & storage changes
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === 'finman_theme' && e.newValue) {
+        setTheme(e.newValue === 'dark' ? 'dark' : 'light');
+      }
+    };
+    const handleCustom = (e) => {
+      if (e.detail?.theme) {
+        setTheme(e.detail.theme === 'dark' ? 'dark' : 'light');
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('finman_theme_changed', handleCustom);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('finman_theme_changed', handleCustom);
+    };
+  }, []);
+
   const setThemePreference = (nextTheme) => {
-    setTheme(nextTheme === 'dark' ? 'dark' : 'light');
+    const val = nextTheme === 'dark' ? 'dark' : 'light';
+    setTheme(val);
+    localStorage.setItem('finman_theme', val);
+    const root = document.documentElement;
+    if (val === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
   };
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+    setTheme((prev) => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      localStorage.setItem('finman_theme', next);
+      return next;
+    });
   };
 
   return (
@@ -32,7 +64,6 @@ export const ThemeProvider = ({ children }) => {
   );
 };
 
-// This named export resolves the error:
 export const useTheme = () => {
   const context = useContext(ThemeContext);
   if (!context) {

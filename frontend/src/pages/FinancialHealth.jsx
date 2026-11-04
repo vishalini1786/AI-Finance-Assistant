@@ -116,7 +116,7 @@ export const FinancialHealth = () => {
     <MainLayout>
       <PageHeader
         title="Financial Health Diagnostic"
-        subtitle="Rule-based analysis calculated from your PostgreSQL records"
+        subtitle="Comprehensive diagnostic assessment of your financial health and indicators"
       />
 
       {error && (
@@ -146,7 +146,7 @@ export const FinancialHealth = () => {
               <span className="text-2xl font-bold text-slate-400">/ 100</span>
             </div>
             <p className="text-xs text-slate-300 mt-3">
-              Calculated from recorded savings, budget utilization, liabilities, assets, and goal progress. Not an ML prediction.
+              Calculated from recorded savings, budget utilization, liabilities, assets, and goal progress.
             </p>
           </div>
 

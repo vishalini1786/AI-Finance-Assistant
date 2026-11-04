@@ -50,7 +50,29 @@ const projectService = {
   deleteProjectExpense: async (projectId, expenseId) => {
     const response = await api.delete(`/projects/${projectId}/expenses/${expenseId}`);
     return response.data;
-  }
+  },
+
+  // ---- Category Methods ----
+
+  getProjectCategories: async (projectId) => {
+    const response = await api.get(`/projects/${projectId}/categories`);
+    return response.data.data.categories;
+  },
+
+  createProjectCategory: async (projectId, name) => {
+    const response = await api.post(`/projects/${projectId}/categories`, { name });
+    return response.data.data.category;
+  },
+
+  updateProjectCategory: async (projectId, categoryId, name) => {
+    const response = await api.put(`/projects/${projectId}/categories/${categoryId}`, { name });
+    return response.data.data.category;
+  },
+
+  deleteProjectCategory: async (projectId, categoryId) => {
+    const response = await api.delete(`/projects/${projectId}/categories/${categoryId}`);
+    return response.data;
+  },
 };
 
 export default projectService;

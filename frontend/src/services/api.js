@@ -19,20 +19,25 @@ const BASE_URL = configuredBaseUrl || (import.meta.env.DEV ? developmentBaseUrl 
 
 // Vite embeds this public URL into the built assets. Guard production builds
 // against accidentally shipping a localhost or insecure HTTP API endpoint.
-if (import.meta.env.PROD) {
-  let productionApiUrl;
-  try {
-    productionApiUrl = new URL(BASE_URL);
-  } catch {
-    throw new Error('VITE_API_BASE_URL must be an absolute HTTPS URL in production.');
-  }
+if (import.meta.env.PROD && typeof window !== 'undefined') {
+  const currentHost = window.location.hostname.toLowerCase();
+  const isLocalHost = currentHost === 'localhost' || currentHost === '127.0.0.1' || currentHost === '::1';
 
-  const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
-  if (productionApiUrl.protocol !== 'https:' || localHosts.has(productionApiUrl.hostname.toLowerCase())) {
-    throw new Error('VITE_API_BASE_URL must use the HTTPS production API in production builds.');
-  }
-  if (productionApiUrl.username || productionApiUrl.password) {
-    throw new Error('VITE_API_BASE_URL must not contain credentials.');
+  if (!isLocalHost) {
+    let productionApiUrl;
+    try {
+      productionApiUrl = new URL(BASE_URL);
+    } catch {
+      throw new Error('VITE_API_BASE_URL must be an absolute HTTPS URL in production.');
+    }
+
+    const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+    if (productionApiUrl.protocol !== 'https:' || localHosts.has(productionApiUrl.hostname.toLowerCase())) {
+      throw new Error('VITE_API_BASE_URL must use the HTTPS production API in production builds.');
+    }
+    if (productionApiUrl.username || productionApiUrl.password) {
+      throw new Error('VITE_API_BASE_URL must not contain credentials.');
+    }
   }
 }
 

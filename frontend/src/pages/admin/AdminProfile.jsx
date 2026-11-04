@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { AdminLayout } from '../../components/layout/AdminLayout';
+import {
+  AdminLayout } from '../../components/layout/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
-import adminService from '../../services/adminService';
-import { Shield, UserCircle, Save, X } from 'lucide-react';
+import { Shield,
+  Save,
+  X
+} from 'lucide-react';
 
 export const AdminProfile = () => {
   const { currentUser, updateProfile } = useAuth();

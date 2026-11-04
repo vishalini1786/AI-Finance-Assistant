@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Link,
+  useLocation,
+  useNavigate } from 'react-router-dom';
 import { MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { SummaryCard } from '../components/common/SummaryCard';
 import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 import expenseService from '../services/expenseService';
 import incomeService from '../services/incomeService';
-import documentService, { DOCUMENT_UPLOAD_ACCEPT } from '../services/documentService';
+import documentService,
+  { DOCUMENT_UPLOAD_ACCEPT } from '../services/documentService';
 import categoryService from '../services/categoryService';
+import dashboardService from '../services/dashboardService';
 import { formatCurrency } from '../utils/formatCurrency';
 import {
   Plus,
@@ -23,8 +28,9 @@ import {
   ArrowDownRight,
   Coffee,
   AlertTriangle,
-  TrendingDown,
   Wallet,
+  Sparkles,
+  Check
 } from 'lucide-react';
 
 const INCOME_SOURCES = ['Salary', 'Freelance', 'Business', 'Scholarship', 'Rental', 'Other'];
@@ -65,6 +71,12 @@ export const Expenses = () => {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrMessage, setOcrMessage] = useState('');
   const [pendingDocumentScan, setPendingDocumentScan] = useState(null);
+  const [aiCategorySuggestion, setAiCategorySuggestion] = useState(null);
+  const [userOverrodeCategory, setUserOverrodeCategory] = useState(false);
+  const [predictingCategory, setPredictingCategory] = useState(false);
+  const [mlServiceUnavailable, setMlServiceUnavailable] = useState(false);
+  const [ocrWarning, setOcrWarning] = useState(null);
+  const [ocrConfirmed, setOcrConfirmed] = useState(false);
 
   const [expenseForm, setExpenseForm] = useState({
     categoryId: '',
@@ -119,6 +131,70 @@ export const Expenses = () => {
     }
   }, [categories, expenseForm.categoryId]);
 
+  // Automatic ML Category Prediction as user types merchant or description
+  useEffect(() => {
+    if (modalMode !== 'expenses' || editingId) return;
+    const text = `${expenseForm.merchantName || ''} ${expenseForm.description || ''}`.trim();
+    if (text.length < 2) {
+      setAiCategorySuggestion(null);
+      setMlServiceUnavailable(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setPredictingCategory(true);
+        setMlServiceUnavailable(false);
+        const res = await dashboardService.predictCategory({
+          description: expenseForm.description || expenseForm.merchantName,
+          merchant: expenseForm.merchantName || expenseForm.description,
+          amount: Number(expenseForm.amount) || 0,
+          paymentMode: expenseForm.paymentMode || 'UPI',
+        });
+
+        if (res && res.available === false) {
+          setMlServiceUnavailable(true);
+          setAiCategorySuggestion(null);
+          return;
+        }
+
+        const predictedName = res?.category || res?.prediction?.category;
+        const confidence = typeof res?.confidence === 'number' ? res.confidence : res?.prediction?.confidence;
+
+        if (predictedName) {
+          const match = categories.find(
+            (c) => c.name.toLowerCase() === predictedName.toLowerCase()
+          );
+          if (match) {
+            setAiCategorySuggestion({
+              name: match.name,
+              categoryId: match.category_id,
+              confidence: confidence,
+              modelVersion: res?.model_version || '2.1.0',
+              alternatives: res?.alternatives || [],
+            });
+            setMlServiceUnavailable(false);
+            // If the user has not made a manual category choice yet and category is default,
+            // populate the category field unless user has explicitly overridden it.
+            if (!userOverrodeCategory) {
+              setExpenseForm((prev) => ({ ...prev, categoryId: String(match.category_id) }));
+            }
+          }
+        } else {
+          setAiCategorySuggestion(null);
+        }
+      } catch (e) {
+        setMlServiceUnavailable(true);
+        setAiCategorySuggestion(null);
+      } finally {
+        setPredictingCategory(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [expenseForm.merchantName, expenseForm.description, expenseForm.amount, expenseForm.paymentMode, modalMode, categories, editingId, userOverrodeCategory]);
+
+  // Handle OCR scan redirected from another page
   useEffect(() => {
     const pendingOcr = location.state?.pendingOcr;
     if (!pendingOcr || categories.length === 0) return;
@@ -219,8 +295,6 @@ export const Expenses = () => {
     });
   };
 
-  const [ocrWarning, setOcrWarning] = useState(null);
-  const [ocrConfirmed, setOcrConfirmed] = useState(false);
 
   const closeModal = () => {
     setModalMode(null);
@@ -230,6 +304,10 @@ export const Expenses = () => {
     setOcrMessage('');
     setOcrWarning(null);
     setOcrConfirmed(false);
+    setAiCategorySuggestion(null);
+    setUserOverrodeCategory(false);
+    setPredictingCategory(false);
+    setMlServiceUnavailable(false);
   };
 
   const selectManualEntry = () => setModalMode(activeTab);
@@ -245,7 +323,7 @@ export const Expenses = () => {
       return {
         ...previous,
         categoryId: catId,
-        amount: extraction.amount == null ? previous.amount : String(extraction.amount),
+        amount: (extraction.missing_amount || extraction.amount == null) ? '' : String(extraction.amount),
         expenseDate: extraction.date || previous.expenseDate,
         merchantName: extraction.merchant || previous.merchantName,
         paymentMode: extraction.paymentMethod || previous.paymentMode || 'UPI',
@@ -257,17 +335,23 @@ export const Expenses = () => {
     setPendingDocumentScan(null);
     setModalMode('expenses');
 
+    const isMissingAmount = Boolean(extraction.missing_amount || extraction.amount == null);
     const numAmount = Number(extraction.amount);
-    const isImplausible = isNaN(numAmount) || numAmount <= 0 || numAmount > 100000;
+    const isImplausible = !isMissingAmount && (isNaN(numAmount) || numAmount <= 0 || numAmount > 100000);
     const isLowConfidence = Boolean(extraction.isLowConfidence || (extraction.confidence != null && extraction.confidence < 0.60));
 
-    if (isLowConfidence || isImplausible) {
+    if (isMissingAmount || isLowConfidence || isImplausible) {
       setOcrWarning({
         confidence: extraction.confidence,
         isImplausible,
-        message: isImplausible
-          ? 'The extracted amount appears implausible or missing. Please verify and confirm before saving.'
-          : 'Low-confidence extraction: Please carefully verify the merchant, amount, and items before saving.',
+        isMissingAmount,
+        message: extraction.user_warning || (
+          isMissingAmount
+            ? 'The restaurant order slip lists items and quantities, but does not specify the final billed amount. Please enter the amount manually from your Swiggy app or upload the Swiggy payment confirmation receipt.'
+            : isImplausible
+              ? 'The extracted amount appears implausible or missing. Please verify and confirm before saving.'
+              : 'Low-confidence extraction: Please carefully verify the merchant, amount, and items before saving.'
+        ),
       });
       setOcrConfirmed(false);
       setOcrMessage('');
@@ -436,7 +520,7 @@ export const Expenses = () => {
     <MainLayout>
       <PageHeader
         title="Expense Records"
-        subtitle="PostgreSQL-backed expense records, receipt scanning, and budget tracking"
+        subtitle="Personal expense records, receipt scanning, and budget tracking"
         rightElement={
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-finman-blue text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-colors">
@@ -577,7 +661,7 @@ export const Expenses = () => {
           <div className="p-16 text-center">
             <Filter className="w-10 h-10 text-slate-300 mx-auto mb-3" />
             <h4 className="text-sm font-bold text-slate-800">No {activeTab === 'expenses' ? 'expense' : 'income'} records found</h4>
-            <p className="text-xs text-slate-400 mt-1">Create a record and refresh to verify PostgreSQL persistence.</p>
+            <p className="text-xs text-slate-400 mt-1">Create an expense record to track spending against your active budgets.</p>
           </div>
         ) : activeTab === 'expenses' ? (
           <div className="overflow-x-auto">
@@ -675,7 +759,7 @@ export const Expenses = () => {
             <Receipt className="w-4 h-4 text-slate-400" />
             <span>{activeCount} visible records</span>
           </div>
-          <span>Data source: authenticated PostgreSQL records</span>
+          <span>Data source: verified ledger records</span>
         </div>
       </div>
 
@@ -883,11 +967,17 @@ export const Expenses = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Category</label>
+                    <label htmlFor="expense-category-select" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Category
+                    </label>
                     <select
+                      id="expense-category-select"
                       required
                       value={expenseForm.categoryId}
-                      onChange={(e) => setExpenseForm({ ...expenseForm, categoryId: e.target.value })}
+                      onChange={(e) => {
+                        setUserOverrodeCategory(true);
+                        setExpenseForm({ ...expenseForm, categoryId: e.target.value });
+                      }}
                       className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                     >
                       {categories.map((category) => (
@@ -913,9 +1003,101 @@ export const Expenses = () => {
                   <textarea
                     value={expenseForm.description}
                     onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
-                    rows={3}
+                    rows={2}
+                    placeholder="e.g. Medicine purchase, dinner with friends"
                     className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2.5 outline-none focus:border-finman-blue font-medium"
                   />
+                </div>
+
+                {/* AI SUGGESTED CATEGORY SECTION */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-finman-blue dark:text-sky-400" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                        AI Suggested Category
+                      </span>
+                    </div>
+                    {aiCategorySuggestion && typeof aiCategorySuggestion.confidence === 'number' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+                        {(aiCategorySuggestion.confidence * 100).toFixed(1)}% Confidence
+                      </span>
+                    )}
+                  </div>
+
+                  {predictingCategory ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-slate-500 dark:text-slate-400">
+                      <Loader2 className="w-4 h-4 animate-spin text-finman-blue" />
+                      <span>Analyzing transaction with trained ML model...</span>
+                    </div>
+                  ) : mlServiceUnavailable ? (
+                    <div className="flex items-start gap-2 py-1 text-xs text-amber-700 dark:text-amber-400">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">AI category suggestion is currently unavailable.</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          You can continue creating your expense by selecting a category manually above.
+                        </p>
+                      </div>
+                    </div>
+                  ) : aiCategorySuggestion ? (
+                    <div className="space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">Predicted Category:</span>
+                          <span className="text-sm font-extrabold text-finman-blue dark:text-sky-400">
+                            {aiCategorySuggestion.name}
+                          </span>
+                        </div>
+
+                        {String(expenseForm.categoryId) === String(aiCategorySuggestion.categoryId) ? (
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800/60">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Category Selected</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExpenseForm((prev) => ({ ...prev, categoryId: String(aiCategorySuggestion.categoryId) }));
+                              setUserOverrodeCategory(false);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1 bg-finman-blue hover:bg-finman-blueDark text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Accept Suggestion</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400 px-1">
+                        <span>
+                          Currently selected:{' '}
+                          <strong className="text-slate-700 dark:text-slate-200">
+                            {categories.find((c) => String(c.category_id) === String(expenseForm.categoryId))?.name || 'None'}
+                          </strong>
+                          {String(expenseForm.categoryId) !== String(aiCategorySuggestion.categoryId) && ' (Manual selection)'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selectEl = document.getElementById('expense-category-select');
+                            if (selectEl) {
+                              selectEl.focus();
+                              selectEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                          }}
+                          className="text-finman-blue dark:text-sky-400 hover:underline font-semibold cursor-pointer"
+                        >
+                          Select different category manually ↑
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 py-1">
+                      Enter a merchant name or description above to see automatic AI category suggestions.
+                    </p>
+                  )}
                 </div>
                 <ModalActions saving={saving} onCancel={closeModal} submitText={expenseForm.sourceType === 'OCR' && ocrWarning && !ocrConfirmed ? 'Confirm & Save Expense' : (editingId ? 'Update Expense' : 'Save Expense')} />
               </form>

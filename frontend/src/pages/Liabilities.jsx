@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { MainLayout } from '../components/layout/MainLayout';
+import {
+  MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { PersonalizedInsights } from '../components/common/PersonalizedInsights';
 import liabilityService from '../services/liabilityService';
@@ -18,12 +19,13 @@ import {
   DollarSign,
   History,
   Building2,
-  Percent,
   Search,
   Filter,
   ArrowUpDown,
   Archive,
   RefreshCw,
+  Calculator,
+  Info,
 } from 'lucide-react';
 
 const LIABILITY_TYPES = [
@@ -45,6 +47,20 @@ const FREQUENCIES = [
   { value: 'ONE_TIME', label: 'One Time' },
 ];
 
+const CALCULATION_METHODS = [
+  { value: 'REDUCING_BALANCE', label: 'Reducing Balance (Standard)' },
+  { value: 'FLAT_RATE', label: 'Flat Rate' },
+  { value: 'ZERO_INTEREST', label: 'Zero-Interest (0% APR)' },
+  { value: 'DAILY_REDUCING', label: 'Daily Reducing Balance' },
+];
+
+const REPAYMENT_METHODS = [
+  { value: 'AUTO_DEBIT', label: 'Auto-Debit / ECS' },
+  { value: 'BANK_TRANSFER', label: 'Bank Transfer / UPI' },
+  { value: 'CHEQUE', label: 'Post-dated Cheque' },
+  { value: 'CASH', label: 'Cash / Manual' },
+];
+
 const emptyForm = {
   name: '',
   liabilityType: 'PERSONAL_LOAN',
@@ -54,6 +70,9 @@ const emptyForm = {
   interestRate: '',
   emiAmount: '',
   paymentFrequency: 'MONTHLY',
+  interestCalculationMethod: 'REDUCING_BALANCE',
+  repaymentMethod: 'AUTO_DEBIT',
+  firstPaymentDate: '',
   startDate: '',
   dueDate: '',
   tenureMonths: '',
@@ -63,8 +82,6 @@ const emptyForm = {
 
 const emptyPaymentForm = {
   amount: '',
-  principalAmount: '',
-  interestAmount: '',
   paymentDate: new Date().toISOString().slice(0, 10),
   paymentMode: 'BANK_TRANSFER',
   notes: '',
@@ -92,11 +109,81 @@ export const Liabilities = () => {
 
   const [paymentLiability, setPaymentLiability] = useState(null);
   const [paymentData, setPaymentData] = useState(emptyPaymentForm);
+  const [repaymentCalc, setRepaymentCalc] = useState(null);
+  const [calculatingRepayment, setCalculatingRepayment] = useState(false);
 
   const [detailLiability, setDetailLiability] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+  const liveEstimatedEmi = useMemo(() => {
+    const p = Number(formData.remainingAmount || formData.totalAmount);
+    const r = Number(formData.interestRate);
+    const n = Number(formData.tenureMonths);
+    const method = formData.interestCalculationMethod;
+    if (!p || p <= 0 || !n || n <= 0) return null;
+    if (method === 'ZERO_INTEREST' || r <= 0) {
+      return Math.round((p / n) * 100) / 100;
+    }
+    if (method === 'FLAT_RATE') {
+      const totalInterest = p * (r / 100) * (n / 12);
+      return Math.round(((p + totalInterest) / n) * 100) / 100;
+    }
+    const monthlyRate = r / (12 * 100);
+    const factor = Math.pow(1 + monthlyRate, n);
+    if (!isFinite(factor) || factor <= 1) return Math.round((p / n) * 100) / 100;
+    const emi = (p * monthlyRate * factor) / (factor - 1);
+    return Math.round(emi * 100) / 100;
+  }, [formData.totalAmount, formData.remainingAmount, formData.interestRate, formData.tenureMonths, formData.interestCalculationMethod]);
+
+  const fetchRepaymentCalculation = async (liabilityId, amount, paymentDate) => {
+    if (!liabilityId || !amount || Number(amount) <= 0) {
+      setRepaymentCalc(null);
+      return;
+    }
+    try {
+      setCalculatingRepayment(true);
+      const res = await liabilityService.calculateRepayment(liabilityId, {
+        amount,
+        paymentDate: paymentDate || new Date().toISOString().slice(0, 10),
+      });
+      setRepaymentCalc(res?.breakdown || null);
+    } catch (err) {
+      console.warn('Dynamic repayment calculation notice:', err?.message || err);
+    } finally {
+      setCalculatingRepayment(false);
+    }
+  };
+
+  const currentBreakdown = useMemo(() => {
+    if (repaymentCalc) return repaymentCalc;
+    if (!paymentLiability || !paymentData.amount || Number(paymentData.amount) <= 0) return null;
+    const p = Number(paymentLiability.remaining_amount) || 0;
+    const r = Number(paymentLiability.interest_rate) || 0;
+    const amt = Number(paymentData.amount) || 0;
+    const method = paymentLiability.interest_calculation_method || 'REDUCING_BALANCE';
+    if (method === 'ZERO_INTEREST' || r <= 0) {
+      const princ = Math.min(amt, p);
+      return {
+        interestPortion: 0,
+        principalPortion: Math.round(princ * 100) / 100,
+        remainingPrincipalAfterPayment: Math.round(Math.max(0, p - princ) * 100) / 100,
+        daysElapsed: 30,
+        explanation: 'Zero-interest loan: 100% of repayment applies directly to reduce principal.',
+      };
+    }
+    const approxInterest = Math.round((p * (r / (12 * 100))) * 100) / 100;
+    const intPortion = Math.min(amt, approxInterest);
+    const princPortion = Math.min(amt - intPortion, p);
+    return {
+      interestPortion: intPortion,
+      principalPortion: Math.round(princPortion * 100) / 100,
+      remainingPrincipalAfterPayment: Math.round(Math.max(0, p - princPortion) * 100) / 100,
+      daysElapsed: 30,
+      explanation: `Calculated monthly interest on ${formatCurrency(p)} at ${r}% p.a.`,
+    };
+  }, [repaymentCalc, paymentLiability, paymentData.amount]);
 
   const loadData = async () => {
     try {
@@ -144,6 +231,9 @@ export const Liabilities = () => {
       interestRate: item.interest_rate !== null ? String(item.interest_rate) : '',
       emiAmount: item.emi_amount ? String(item.emi_amount) : '',
       paymentFrequency: item.payment_frequency || 'MONTHLY',
+      interestCalculationMethod: item.interest_calculation_method || 'REDUCING_BALANCE',
+      repaymentMethod: item.repayment_method || 'AUTO_DEBIT',
+      firstPaymentDate: item.first_payment_date ? item.first_payment_date.slice(0, 10) : '',
       startDate: item.start_date || '',
       dueDate: item.due_date || '',
       tenureMonths: item.tenure_months ? String(item.tenure_months) : '',
@@ -175,8 +265,11 @@ export const Liabilities = () => {
         totalAmount: totalNum,
         remainingAmount: remainingNum,
         interestRate: formData.interestRate !== '' ? Number(formData.interestRate) : 0,
-        emiAmount: formData.emiAmount !== '' ? Number(formData.emiAmount) : 0,
+        emiAmount: formData.emiAmount !== '' ? Number(formData.emiAmount) : null,
         paymentFrequency: formData.paymentFrequency,
+        interestCalculationMethod: formData.interestCalculationMethod || 'REDUCING_BALANCE',
+        repaymentMethod: formData.repaymentMethod || 'AUTO_DEBIT',
+        firstPaymentDate: formData.firstPaymentDate || null,
         startDate: formData.startDate || null,
         dueDate: formData.dueDate || null,
         tenureMonths: formData.tenureMonths !== '' ? Number(formData.tenureMonths) : null,
@@ -205,15 +298,15 @@ export const Liabilities = () => {
 
   const openPaymentModal = (item) => {
     setPaymentLiability(item);
-    const emi = item.emi_amount || item.remaining_amount || '';
+    const defaultAmount = item.emi_amount ? String(item.emi_amount) : String(item.remaining_amount || '');
+    const today = new Date().toISOString().slice(0, 10);
     setPaymentData({
-      amount: String(emi),
-      principalAmount: '',
-      interestAmount: '',
-      paymentDate: new Date().toISOString().slice(0, 10),
-      paymentMode: 'BANK_TRANSFER',
+      amount: defaultAmount,
+      paymentDate: today,
+      paymentMode: item.repayment_method || 'BANK_TRANSFER',
       notes: '',
     });
+    fetchRepaymentCalculation(item.liability_id, defaultAmount, today);
   };
 
   const handleSavePayment = async (e) => {
@@ -233,16 +326,16 @@ export const Liabilities = () => {
 
       const payload = {
         amount: pAmount,
-        principalAmount: paymentData.principalAmount !== '' ? Number(paymentData.principalAmount) : null,
-        interestAmount: paymentData.interestAmount !== '' ? Number(paymentData.interestAmount) : null,
         paymentDate: paymentData.paymentDate || null,
         paymentMode: paymentData.paymentMode || 'BANK_TRANSFER',
         notes: paymentData.notes.trim() || null,
       };
 
-      await liabilityService.recordPayment(paymentLiability.liability_id, payload);
-      setSuccess(`Payment of ${formatCurrency(pAmount)} recorded successfully.`);
+      const result = await liabilityService.recordPayment(paymentLiability.liability_id, payload);
+      const b = result?.breakdown;
+      setSuccess(`Payment of ${formatCurrency(pAmount)} recorded successfully. Principal: ${formatCurrency(b?.principalPortion ?? 0)}, Interest: ${formatCurrency(b?.interestPortion ?? 0)}.`);
       setPaymentLiability(null);
+      setRepaymentCalc(null);
       await loadData();
     } catch (err) {
       setError(err?.response?.data?.message || err.message || 'Failed to record payment.');
@@ -555,8 +648,13 @@ export const Liabilities = () => {
                           </div>
                           <div className="text-[10px] text-slate-400 mt-0.5">{progress}% repaid</div>
                         </td>
-                        <td className="py-3.5 px-4 text-center font-semibold text-slate-700 dark:text-slate-300">
-                          {item.interest_rate > 0 ? `${item.interest_rate}%` : '0%'}
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="font-semibold text-slate-700 dark:text-slate-300">
+                            {item.interest_rate > 0 ? `${item.interest_rate}%` : '0%'}
+                          </div>
+                          <div className="text-[9px] text-slate-400 capitalize">
+                            {item.interest_calculation_method ? item.interest_calculation_method.toLowerCase().replace('_', ' ') : 'reducing'}
+                          </div>
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="font-semibold text-slate-800 dark:text-slate-200">
@@ -767,26 +865,34 @@ export const Liabilities = () => {
                       step="0.01"
                       min="0"
                       max="100"
-                      placeholder="e.g. 8.5"
-                      value={formData.interestRate}
+                      disabled={formData.interestCalculationMethod === 'ZERO_INTEREST'}
+                      placeholder={formData.interestCalculationMethod === 'ZERO_INTEREST' ? '0% (Zero Interest)' : 'e.g. 8.5'}
+                      value={formData.interestCalculationMethod === 'ZERO_INTEREST' ? '0' : formData.interestRate}
                       onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:border-finman-blue"
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:border-finman-blue disabled:opacity-60"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      EMI / Payment Amount (₹)
+                      Calculation Method
                     </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="e.g. 21500"
-                      value={formData.emiAmount}
-                      onChange={(e) => setFormData({ ...formData, emiAmount: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:border-finman-blue"
-                    />
+                    <select
+                      value={formData.interestCalculationMethod}
+                      onChange={(e) => {
+                        const m = e.target.value;
+                        setFormData({
+                          ...formData,
+                          interestCalculationMethod: m,
+                          interestRate: m === 'ZERO_INTEREST' ? '0' : formData.interestRate,
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden"
+                    >
+                      {CALCULATION_METHODS.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -805,7 +911,70 @@ export const Liabilities = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        EMI Amount (₹)
+                      </label>
+                      {liveEstimatedEmi && (
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, emiAmount: String(liveEstimatedEmi) })}
+                          className="text-[10px] text-finman-blue font-semibold hover:underline"
+                        >
+                          Use Calc: {formatCurrency(liveEstimatedEmi)}
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder={liveEstimatedEmi ? `Calculated: ${liveEstimatedEmi}` : 'e.g. 21500'}
+                      value={formData.emiAmount}
+                      onChange={(e) => setFormData({ ...formData, emiAmount: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:border-finman-blue"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Repayment Method
+                    </label>
+                    <select
+                      value={formData.repaymentMethod}
+                      onChange={(e) => setFormData({ ...formData, repaymentMethod: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden"
+                    >
+                      {REPAYMENT_METHODS.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {liveEstimatedEmi && (
+                  <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/40 rounded-xl flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300">
+                      <Calculator className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                      <span>
+                        Live Estimated EMI: <strong className="font-bold">{formatCurrency(liveEstimatedEmi)}</strong> / month ({formData.interestCalculationMethod === 'ZERO_INTEREST' ? '0% APR' : `${formData.interestRate || 0}% reducing balance`})
+                      </span>
+                    </div>
+                    {formData.emiAmount !== String(liveEstimatedEmi) && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, emiAmount: String(liveEstimatedEmi) })}
+                        className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                      >
+                        Apply EMI
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Loan Start Date
@@ -814,6 +983,18 @@ export const Liabilities = () => {
                       type="date"
                       value={formData.startDate}
                       onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      First Payment Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.firstPaymentDate}
+                      onChange={(e) => setFormData({ ...formData, firstPaymentDate: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden"
                     />
                   </div>
@@ -883,7 +1064,7 @@ export const Liabilities = () => {
         {/* Modal: Record Repayment */}
         {paymentLiability && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6">
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl p-6">
               <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-700">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -891,11 +1072,14 @@ export const Liabilities = () => {
                     Record Repayment
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {paymentLiability.name} (Balance: {formatCurrency(paymentLiability.remaining_amount)})
+                    {paymentLiability.name} • Outstanding: <span className="font-semibold text-rose-500">{formatCurrency(paymentLiability.remaining_amount)}</span>
                   </p>
                 </div>
                 <button
-                  onClick={() => setPaymentLiability(null)}
+                  onClick={() => {
+                    setPaymentLiability(null);
+                    setRepaymentCalc(null);
+                  }}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
                   <X className="w-5 h-5" />
@@ -903,63 +1087,115 @@ export const Liabilities = () => {
               </div>
 
               <form onSubmit={handleSavePayment} className="space-y-4 mt-4">
+                {/* User Input: Total Payment Amount */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Total Payment Amount (₹) *
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    required
-                    value={paymentData.amount}
-                    onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
-                  />
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      value={paymentData.amount}
+                      onChange={(e) => {
+                        const newAmt = e.target.value;
+                        setPaymentData((prev) => ({ ...prev, amount: newAmt }));
+                        fetchRepaymentCalculation(paymentLiability.liability_id, newAmt, paymentData.paymentDate);
+                      }}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold focus:outline-hidden focus:border-finman-blue"
+                    />
+                    {calculatingRepayment && (
+                      <Loader2 className="w-4 h-4 text-finman-blue animate-spin absolute right-3 top-3" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Automatic Computed Breakdown Cards */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 space-y-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                    <span>Automatic Financial Breakdown</span>
+                    <span className="text-[10px] lowercase font-normal text-slate-400">
+                      {paymentLiability.interest_calculation_method?.toLowerCase()?.replace('_', ' ') || 'reducing balance'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-2.5 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40">
+                      <div className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-300">
+                        Principal Portion (Debt Reduction)
+                      </div>
+                      <div className="text-base font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">
+                        {formatCurrency(currentBreakdown?.principalPortion ?? 0)}
+                      </div>
+                      <div className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-0.5">
+                        Reduces outstanding loan balance
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40">
+                      <div className="text-[10px] font-semibold text-amber-800 dark:text-amber-300">
+                        Interest Portion (Financing Cost)
+                      </div>
+                      <div className="text-base font-bold text-amber-700 dark:text-amber-400 mt-0.5">
+                        {formatCurrency(currentBreakdown?.interestPortion ?? 0)}
+                      </div>
+                      <div className="text-[10px] text-amber-600 dark:text-amber-500 mt-0.5">
+                        Logged as personal expense once
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Projected Remaining Balance */}
+                  <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">
+                      Projected Outstanding Balance:
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white text-sm">
+                      {formatCurrency(currentBreakdown?.remainingPrincipalAfterPayment ?? paymentLiability.remaining_amount)}
+                    </span>
+                  </div>
+
+                  {/* Explanation Note */}
+                  {currentBreakdown?.explanation && (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-1.5 leading-relaxed bg-white/50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                      <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+                      <span>{currentBreakdown.explanation}</span>
+                    </div>
+                  )}
+
+                  {/* Payoff Alert */}
+                  {currentBreakdown && Number(currentBreakdown.remainingPrincipalAfterPayment) <= 0 && Number(paymentData.amount) > 0 && (
+                    <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>This payment will completely settle and close this loan!</span>
+                    </div>
+                  )}
+
+                  {/* Underpayment Warning */}
+                  {currentBreakdown && Number(currentBreakdown.principalPortion) <= 0 && Number(paymentData.amount) > 0 && (
+                    <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-xs font-medium flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>Payment is less than accrued interest. Principal will not decrease.</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Principal Portion (₹)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Reduces debt"
-                      value={paymentData.principalAmount}
-                      onChange={(e) => setPaymentData({ ...paymentData, principalAmount: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Interest Portion (₹)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Financing cost"
-                      value={paymentData.interestAmount}
-                      onChange={(e) => setPaymentData({ ...paymentData, interestAmount: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Payment Date
+                      Payment Date *
                     </label>
                     <input
                       type="date"
                       required
                       value={paymentData.paymentDate}
-                      onChange={(e) => setPaymentData({ ...paymentData, paymentDate: e.target.value })}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        setPaymentData((prev) => ({ ...prev, paymentDate: newDate }));
+                        fetchRepaymentCalculation(paymentLiability.liability_id, paymentData.amount, newDate);
+                      }}
                       className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                     />
                   </div>
@@ -997,15 +1233,18 @@ export const Liabilities = () => {
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-700">
                   <button
                     type="button"
-                    onClick={() => setPaymentLiability(null)}
+                    onClick={() => {
+                      setPaymentLiability(null);
+                      setRepaymentCalc(null);
+                    }}
                     className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={saving}
-                    className="px-5 py-2 text-xs font-semibold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors inline-flex items-center gap-2"
+                    disabled={saving || !paymentData.amount || Number(paymentData.amount) <= 0}
+                    className="px-5 py-2 text-xs font-semibold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     Confirm Payment
@@ -1058,6 +1297,29 @@ export const Liabilities = () => {
                 </div>
               </div>
 
+              <div className="mb-3 px-3.5 py-2.5 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px] space-y-1 shrink-0">
+                <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                  <span className="text-slate-400">Interest Calculation:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {detailLiability.interest_rate > 0 ? `${detailLiability.interest_rate}% p.a.` : '0%'} ({detailLiability.interest_calculation_method || 'REDUCING_BALANCE'})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                  <span className="text-slate-400">Repayment Mode / Frequency:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {detailLiability.repayment_method || 'AUTO_DEBIT'} • {detailLiability.payment_frequency}
+                  </span>
+                </div>
+                {detailLiability.first_payment_date && (
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                    <span className="text-slate-400">First Payment Date:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {formatDate(detailLiability.first_payment_date)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <div className="flex-1 overflow-y-auto">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
                   Repayment History ({detailLiability.payments?.length || 0})
@@ -1083,6 +1345,9 @@ export const Liabilities = () => {
                         <div className="text-right text-[11px] text-slate-500">
                           <div>Principal: {formatCurrency(p.principal_amount)}</div>
                           <div className="text-[10px] text-slate-400">Interest: {formatCurrency(p.interest_amount)}</div>
+                          {p.remaining_principal !== null && p.remaining_principal !== undefined && (
+                            <div className="text-[10px] text-slate-400 font-medium">Balance: {formatCurrency(p.remaining_principal)}</div>
+                          )}
                         </div>
                       </div>
                     ))}

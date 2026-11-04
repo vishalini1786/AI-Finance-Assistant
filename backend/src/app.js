@@ -44,7 +44,7 @@ const configuredOrigins = (process.env.FRONTEND_URL || '')
   .filter(Boolean);
 const developmentOrigins = process.env.NODE_ENV === 'production'
   ? []
-  : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173'];
+  : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://[::1]:5173', 'http://localhost:4173', 'http://127.0.0.1:4173', 'http://[::1]:4173'];
 const allowedOrigins = new Set([...configuredOrigins, ...developmentOrigins]);
 
 function isOriginAllowed(origin) {
@@ -57,6 +57,8 @@ function isOriginAllowed(origin) {
     if (
       host === 'localhost' ||
       host === '127.0.0.1' ||
+      host === '::1' ||
+      host === '[::1]' ||
       host.endsWith('.vercel.app') ||
       host.endsWith('.netlify.app') ||
       host.endsWith('.onrender.com')
@@ -69,6 +71,14 @@ function isOriginAllowed(origin) {
 
 // Browser auth uses a Bearer token, not cookies, so credentialed CORS is not
 // needed. Production origins come only from FRONTEND_URL and trusted deploy domains.
+// Support Chromium Private Network Access preflights on localhost
+app.use((req, res, next) => {
+  if (req.headers['access-control-request-private-network']) {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
+  next();
+});
+
 app.use(cors({
   origin(origin, callback) {
     if (isOriginAllowed(origin)) {
@@ -77,7 +87,7 @@ app.use(cors({
     return callback(null, false);
   },
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   maxAge: 600,
 }));
 

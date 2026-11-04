@@ -11,6 +11,7 @@ const validateBudget = require('../validators/budgetValidator');
 router.use(authMiddleware);
 
 router.post('/', validate(validateBudget), budgetController.createBudget);
+router.post('/reallocate', budgetController.reallocateBudget);
 router.get('/', budgetController.getAllBudgets);
 router.get('/:id', budgetController.getBudgetById);
 router.put('/:id', validate(validateBudget), budgetController.updateBudget);

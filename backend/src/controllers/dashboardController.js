@@ -45,8 +45,9 @@ const getAssistantContext = asyncHandler(async (req, res) => {
 });
 
 const chat = asyncHandler(async (req, res) => {
-  const { message, history, pendingTransaction } = req.body;
-  const result = await aiChatService.processChatMessage(req.userId, message, history, pendingTransaction);
+  const { message, history, pendingTransaction, language } = req.body;
+  const lang = language || req.headers['x-language'] || 'en';
+  const result = await aiChatService.processChatMessage(req.userId, message, history, pendingTransaction, lang);
   return sendSuccess(res, {
     message: 'Chat response generated successfully',
     data: result,
@@ -156,8 +157,39 @@ const testAiConnection = asyncHandler(async (req, res) => {
   });
 });
 
+
+const getExpenseForecast = asyncHandler(async (req, res) => {
+  const forecast = await dashboardService.getExpenseForecast(req.userId);
+  return sendSuccess(res, { message: 'Expense forecast generated successfully', data: { forecast } });
+});
+
+const getSpendingAnomalies = asyncHandler(async (req, res) => {
+  const anomalies = await dashboardService.getSpendingAnomalies(req.userId);
+  return sendSuccess(res, { message: 'Spending anomalies analyzed successfully', data: { anomalies } });
+});
+
+const getMlModelInfo = asyncHandler(async (req, res) => {
+  const modelInfo = await dashboardService.getMlModelInfo();
+  return sendSuccess(res, { message: 'ML model info retrieved successfully', data: { modelInfo } });
+});
+
+const dismissAnomaly = asyncHandler(async (req, res) => {
+  const result = await dashboardService.dismissAnomaly(req.userId, req.params.id);
+  return sendSuccess(res, { message: 'Anomaly dismissed successfully', data: result });
+});
+
+const predictCategory = asyncHandler(async (req, res) => {
+  const result = await dashboardService.predictExpenseCategory(req.body);
+  return sendSuccess(res, { message: 'Category predicted successfully', data: result });
+});
+
 module.exports = {
   getSummary,
+  getExpenseForecast,
+  getSpendingAnomalies,
+  dismissAnomaly,
+  getMlModelInfo,
+  predictCategory,
   getRecentTransactions,
   getCategoryExpenses,
   getMonthlyTrends,

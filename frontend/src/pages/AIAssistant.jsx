@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { MainLayout } from '../components/layout/MainLayout';
+import {
+  MainLayout } from '../components/layout/MainLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import dashboardService from '../services/dashboardService';
 import { useAuth } from '../context/AuthContext';
@@ -18,12 +19,9 @@ import {
   Mic,
   MicOff,
   Check,
-  CheckCircle2,
   X,
-  Edit2,
   Wallet,
   Receipt,
-  Calendar,
   PieChart,
   Briefcase,
   Layers,
@@ -32,7 +30,7 @@ import {
   Repeat,
   CreditCard,
   FileText,
-  RotateCcw,
+  RotateCcw
 } from 'lucide-react';
 
 /**
@@ -841,7 +839,7 @@ export const AIAssistant = () => {
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="font-semibold text-slate-800 dark:text-white">FinMan Intelligent Conversational Core</span>
               </div>
-              <span className="text-slate-400 text-[11px] font-medium">PostgreSQL Grounded • Natural Language</span>
+              <span className="text-slate-400 text-[11px] font-medium">Finance Grounded • Natural Language</span>
             </div>
 
             {/* Messages container */}
