@@ -404,3 +404,4 @@ python -c "import pickle; pickle.load(open('backend/ml-service/models/finman_exp
 Developed as part of the FinMan AI Personal Finance Assistant project.
 Author: Vishalini R.
 Repository: [vishalini1786/AI-Finance-Assistant](https://github.com/vishalini1786/AI-Finance-Assistant)
+
